@@ -305,3 +305,39 @@ footer {
   }
 }
 
+
+.price-panel { margin-bottom: 24px; }
+.symbol-button {
+  color: #9ae8d6;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dotted #4d8275;
+  padding: 8px 0;
+  font-weight: 650;
+}
+.symbol-button:hover, .symbol-button[aria-pressed="true"] { color: #fff; }
+.close-panel {
+  color: #aab8ca;
+  border: 1px solid #334155;
+  background: transparent;
+  border-radius: 6px;
+  min-width: 44px;
+  font-size: 24px;
+}
+.price-reference { color: #aab8ca; padding: 0 24px 18px; line-height: 1.7; }
+.price-reference strong { color: #e5ecf5; }
+.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid #253043; }
+.metric { padding: 22px 24px; min-width: 0; }
+.metric + .metric { border-left: 1px solid #253043; }
+.metric > span { display: block; color: #aab8ca; font-size: 12px; margin-bottom: 12px; }
+.metric strong { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+.metric small { display: block; color: #c4b98f; margin-top: 10px; line-height: 1.5; }
+.metric-note { padding: 14px 24px; color: #c4b98f; font-size: 12px; line-height: 1.7; border-top: 1px solid #253043; }
+@media (max-width: 680px) {
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
+  .metric { padding: 18px 14px; }
+  .metric:nth-child(3) { border-left: 0; }
+  .metric:nth-child(n+3) { border-top: 1px solid #253043; }
+  .metric strong { font-size: 23px; }
+  .price-reference, .metric-note { padding-inline: 14px; }
+}

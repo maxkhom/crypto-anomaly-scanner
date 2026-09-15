@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from datetime import datetime
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -6,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from bitunix import InstrumentNotFound, MarketDataError, market_data
 from market import get_market
+from price_changes import calculate_price_changes
 
 app = FastAPI(title="Crypto Anomaly Scanner")
 
@@ -39,6 +41,23 @@ def market_candles(
 @app.get("/api/market/tickers")
 def market_tickers() -> dict:
     return get_market()
+
+
+@app.get("/api/scanner/price-changes")
+def price_changes(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+) -> dict:
+    source = market_data.get_candles(symbol, "1m", 62, True)
+    as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
+    result = calculate_price_changes(source["items"], as_of_ms)
+    return {
+        "exchange": "bitunix", "symbol": symbol,
+        "as_of": source["as_of"], "fetched_at": source["fetched_at"],
+        "source_quality": source["data_quality"],
+        "source_rejected_count": source["rejected_count"],
+        "closure_basis": source["closure_basis"],
+        **result,
+    }
 
 
 @app.get("/api/health")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import PriceChanges from './PriceChanges'
 
 type Ticker = {
   symbol: string
@@ -43,6 +44,7 @@ const volumeFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }
 const percentFormat = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' })
 
 function App() {
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -90,16 +92,17 @@ function App() {
         <div><span>Последний запрос</span><strong className={error ? 'negative' : market ? 'positive' : ''}>{loading ? 'Загрузка…' : error ? 'Ошибка' : 'Успешно'}</strong></div>
         <div><span>Получено по местному времени</span><strong>{market ? new Date(market.fetched_at).toLocaleTimeString('ru-RU') : '—'}</strong></div>
       </section>
+      {selectedSymbol && <PriceChanges key={selectedSymbol} symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />}
       <section className="panel" aria-label="Скринер">
         <div className="toolbar">
-          <div><h2>Рынок</h2><p>Показано {rows.length} из {market?.count ?? 0}</p></div>
+          <div><h2>Рынок</h2><p>Показано {rows.length} из {market?.count ?? 0} · Нажмите на символ для анализа</p></div>
           <div className="controls"><label className="search"><span className="sr-only">Поиск монеты</span><input type="search" placeholder="Поиск: BTC, ETH…" value={query} onChange={(event) => setQuery(event.target.value)} /></label><button className="refresh" onClick={refresh} disabled={loading}>{loading ? 'Загрузка…' : 'Обновить'}</button></div>
         </div>
         {error && <p className="notice error" role="alert">{error}{market && ' Ниже — данные предыдущего успешного запроса.'}</p>}
         {!!market?.unavailable_symbols.length && <details className="notice"><summary>Нет корректных котировок: {market.unavailable_symbols.length}</summary><p>{market.unavailable_symbols.join(', ')}</p></details>}
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Таблица котировок, доступна горизонтальная прокрутка" aria-busy={loading}>
           <table><thead><tr>{columns.map((column) => <th key={column.key} scope="col" aria-sort={sort === column.key ? ascending ? 'ascending' : 'descending' : 'none'}><button onClick={() => changeSort(column.key)}>{column.label} <span aria-hidden="true">{sort === column.key ? ascending ? '↑' : '↓' : '↕'}</span></button></th>)}</tr></thead>
-            <tbody>{rows.map((item) => <tr key={item.symbol}><td><strong>{item.symbol}</strong><small>Bitunix</small></td><td>{item.price}</td><td className={item.change_24h_pct > 0 ? 'positive' : item.change_24h_pct < 0 ? 'negative' : ''}>{percentFormat.format(item.change_24h_pct)}%</td><td>{volumeFormat.format(Number(item.volume_24h_usdt))}</td></tr>)}</tbody>
+            <tbody>{rows.map((item) => <tr key={item.symbol}><td><button className="symbol-button" onClick={() => setSelectedSymbol(item.symbol)} aria-pressed={selectedSymbol === item.symbol} aria-label={`Показать изменения ${item.symbol}`}>{item.symbol}</button><small>Bitunix</small></td><td>{item.price}</td><td className={item.change_24h_pct > 0 ? 'positive' : item.change_24h_pct < 0 ? 'negative' : ''}>{percentFormat.format(item.change_24h_pct)}%</td><td>{volumeFormat.format(Number(item.volume_24h_usdt))}</td></tr>)}</tbody>
           </table>
           {!rows.length && <p className="empty" role="status">{loading ? 'Получаем котировки Bitunix…' : error && !market ? 'Котировки пока недоступны.' : query ? 'По этому запросу ничего не найдено.' : 'Нет доступных котировок.'}</p>}
         </div>
