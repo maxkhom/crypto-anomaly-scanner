@@ -5,7 +5,7 @@ from decimal import Decimal
 from bitunix import iso_time
 
 MINUTE_MS = 60_000
-PERIODS = {"1m": 1, "5m": 5, "15m": 15, "1h": 60}
+PERIODS = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240}
 
 
 def calculate_price_changes(candles: list[dict], as_of_ms: int) -> dict:

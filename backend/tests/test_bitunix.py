@@ -122,6 +122,20 @@ class ServiceTests(unittest.TestCase):
         with patch.object(self.service, 'fetch_rows', side_effect=[[PAIR], []]):
             self.assertEqual(self.service.get_candles('BTCUSDT','1m',5,True)['count'], 0)
 
+    def test_two_history_pages_use_exclusive_boundary(self):
+        rows = [{**CANDLES[0], 'open':'76400', 'time':str(AS_OF // 60000 * 60000 - i * 60000)} for i in range(243)]
+        with patch.object(self.service, 'fetch_rows', side_effect=[[PAIR], rows[:200], rows[200:]]) as fetch, patch('bitunix.time.time_ns', return_value=AS_OF * 1_000_000):
+            result = self.service.get_candles('BTCUSDT', '1m', 243, False)
+        self.assertEqual(result['count'], 243)
+        self.assertEqual(result['gaps'], [])
+        self.assertEqual(fetch.call_count, 3)
+        self.assertEqual(fetch.call_args.args[1]['endTime'], int(rows[199]['time']))
+        self.assertEqual(fetch.call_args.args[1]['limit'], 43)
+
+    def test_history_overlap_is_rejected(self):
+        with patch.object(self.service, 'fetch_rows', side_effect=[[PAIR], CANDLES, CANDLES]), self.assertRaises(MarketDataError):
+            self.service.get_candles('BTCUSDT', '1m', 243, True)
+
     def test_transport_errors(self):
         for error in (URLError('offline'), HTTPError('https://example.invalid',429,'rate limit',{},None)):
             with self.subTest(error=error), patch('bitunix.urlopen', side_effect=error), self.assertRaises(MarketDataError):

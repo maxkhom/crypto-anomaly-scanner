@@ -139,14 +139,29 @@ class BitunixMarketDataService:
         return [instruments[symbol] for symbol in sorted(instruments)]
 
     def get_candles(self, symbol: str, interval: str, limit: int, closed_only: bool) -> dict:
-        if interval not in INTERVAL_MS or not 1 <= limit <= 200:
+        if interval not in INTERVAL_MS or not 1 <= limit <= 400:
             raise ValueError("Unsupported interval or limit")
         instruments = self.get_active_usdt_futures()
         instrument = next((item for item in instruments if item["symbol"] == symbol), None)
         if instrument is None:
             raise InstrumentNotFound("Активный USDT-инструмент не найден")
         as_of_ms = time.time_ns() // 1_000_000
-        rows = self.fetch_rows("kline", {"symbol": symbol, "interval": interval, "limit": limit, "type": "LAST_PRICE"})
+        params = {"symbol": symbol, "interval": interval, "limit": min(limit, 200), "type": "LAST_PRICE"}
+        rows = self.fetch_rows("kline", params)
+        if limit > 200 and rows:
+            try:
+                boundary = min(int(row["time"]) for row in rows)
+            except (KeyError, ValueError, TypeError) as exc:
+                raise MarketDataError("Некорректное время границы истории Bitunix") from exc
+            older = self.fetch_rows("kline", {**params, "limit": limit - 200, "endTime": boundary})
+            # endTime was observed to be exclusive. Reject unexpected overlap
+            # rather than silently accepting an ignored pagination parameter.
+            try:
+                if any(int(row["time"]) >= boundary for row in older):
+                    raise ValueError("Overlapping history pages")
+            except (KeyError, ValueError, TypeError) as exc:
+                raise MarketDataError("Bitunix вернул некорректную границу исторических свечей") from exc
+            rows += older
         valid_rows = []
         rejected_candles = []
         previous_candle = None

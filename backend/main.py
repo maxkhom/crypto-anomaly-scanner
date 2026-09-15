@@ -48,7 +48,7 @@ def market_tickers() -> dict:
 def price_changes(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
 ) -> dict:
-    source = market_data.get_candles(symbol, "1m", 62, True)
+    source = market_data.get_candles(symbol, "1m", 243, True)
     as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
     result = calculate_price_changes(source["items"], as_of_ms)
     return {
@@ -70,7 +70,7 @@ def health() -> dict[str, str]:
 def scanner_metrics(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
 ) -> dict:
-    source = market_data.get_candles(symbol, "1m", 107, True)
+    source = market_data.get_candles(symbol, "1m", 243, True)
     as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
     return {
         "exchange": "bitunix", "symbol": symbol,

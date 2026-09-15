@@ -10,7 +10,7 @@ def candle(minutes_ago, price='100', **extra):
 
 class PriceChangeTests(unittest.TestCase):
     def test_known_returns_and_exact_hour_boundary(self):
-        rows = [candle(i) for i in range(61)]
+        rows = [candle(i) for i in range(241)]
         rows[0]['close'] = '105'
         result = calculate_price_changes(rows, END + 30_000)
         for metric in result['changes'].values():
@@ -61,6 +61,16 @@ class PriceChangeTests(unittest.TestCase):
         for value in ['0', '-1', 'NaN', 'Infinity']:
             result = calculate_price_changes([candle(1, value), candle(0)], END)
             self.assertEqual(result['changes']['1m']['status'], 'invalid_price')
+
+    def test_four_hours_need_241_closings(self):
+        result = calculate_price_changes([candle(i) for i in range(240)], END)
+        self.assertIsNone(result['changes']['4h']['percent'])
+        self.assertEqual(result['changes']['4h']['missing_count'], 1)
+
+    def test_gap_in_older_history_does_not_block_one_hour(self):
+        result = calculate_price_changes([candle(i) for i in range(241) if i != 150], END)
+        self.assertEqual(result['changes']['1h']['percent'], 0)
+        self.assertIsNone(result['changes']['4h']['percent'])
 
 
 if __name__ == '__main__':

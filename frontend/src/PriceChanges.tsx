@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-const periods = ['1m', '5m', '15m', '1h'] as const
-const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час' }
+const periods = ['1m', '5m', '15m', '1h', '4h'] as const
+const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '4h': '4 часа' }
 type Metric = {
   percent: number | null
   status: string
@@ -41,7 +41,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
   useEffect(() => {
     let active = true
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 25000)
+    const timeout = setTimeout(() => controller.abort(), 35000)
     // Delay dispatch by one event-loop turn to avoid duplicate development effects.
     const start = setTimeout(async () => {
       try {
