@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from typing import Literal
@@ -10,8 +12,26 @@ from market import get_market
 from price_changes import calculate_price_changes
 from relative_volume import calculate_relative_volume
 from minute_momentum import calculate_minute_momentum
+from realtime import trade_stream
 
-app = FastAPI(title="Crypto Anomaly Scanner")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(trade_stream.run())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)
+
+
+@app.get("/api/market/realtime")
+async def realtime_status() -> dict:
+    return trade_stream.snapshot()
 
 
 @app.exception_handler(MarketDataError)

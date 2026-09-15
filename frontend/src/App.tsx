@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import PriceChanges from './PriceChanges'
+import RealtimePanel from './RealtimePanel'
 
 type Ticker = {
   symbol: string
@@ -92,6 +93,7 @@ function App() {
         <div><span>Последний запрос</span><strong className={error ? 'negative' : market ? 'positive' : ''}>{loading ? 'Загрузка…' : error ? 'Ошибка' : 'Успешно'}</strong></div>
         <div><span>Получено по местному времени</span><strong>{market ? new Date(market.fetched_at).toLocaleTimeString('ru-RU') : '—'}</strong></div>
       </section>
+      <RealtimePanel />
       {selectedSymbol && <PriceChanges key={selectedSymbol} symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />}
       <section className="panel" aria-label="Скринер">
         <div className="toolbar">
@@ -107,7 +109,7 @@ function App() {
           {!rows.length && <p className="empty" role="status">{loading ? 'Получаем котировки Bitunix…' : error && !market ? 'Котировки пока недоступны.' : query ? 'По этому запросу ничего не найдено.' : 'Нет доступных котировок.'}</p>}
         </div>
       </section>
-      <footer>Обновление вручную · Цена последней сделки · Объём за скользящие 24 часа</footer>
+      <footer>Таблица рынка обновляется вручную · Цена последней сделки · Объём за скользящие 24 часа</footer>
     </main>
   )
 }
