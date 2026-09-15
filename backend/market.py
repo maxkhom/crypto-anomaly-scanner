@@ -1,40 +1,13 @@
-import json
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from urllib.error import URLError
-from urllib.request import urlopen
 
-from fastapi import HTTPException
-
-BASE_URL = "https://fapi.bitunix.com/api/v1/futures/market"
-
-
-def fetch_rows(endpoint: str) -> list[dict]:
-    try:
-        with urlopen(f"{BASE_URL}/{endpoint}", timeout=10) as response:
-            payload = json.load(response)
-        if not isinstance(payload, dict) or payload.get("code") != 0:
-            raise ValueError("Bitunix returned an error")
-        rows = payload["data"]
-        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
-            raise ValueError("Expected a list of objects")
-        return rows
-    except (URLError, TimeoutError, OSError) as exc:
-        raise HTTPException(502, "Не удалось получить ответ от Bitunix") from exc
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(502, "Bitunix вернул некорректный список данных") from exc
+from bitunix import market_data
 
 
 def get_market() -> dict:
-    pairs = fetch_rows("trading_pairs")
-    tickers = fetch_rows("tickers")
-    symbols = {
-        pair["symbol"]
-        for pair in pairs
-        if pair.get("quote") == "USDT"
-        and pair.get("symbolStatus") == "OPEN"
-        and isinstance(pair.get("symbol"), str)
-    }
+    pairs = market_data.get_active_usdt_futures()
+    tickers = market_data.fetch_rows("tickers")
+    symbols = {pair["symbol"] for pair in pairs}
     items = {}
     for ticker in tickers:
         symbol = ticker.get("symbol")

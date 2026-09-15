@@ -1,13 +1,39 @@
-import json
 from decimal import Decimal, InvalidOperation
-from urllib.error import URLError
-from urllib.request import urlopen
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
+from bitunix import InstrumentNotFound, MarketDataError, market_data
 from market import get_market
 
 app = FastAPI(title="Crypto Anomaly Scanner")
+
+
+@app.exception_handler(MarketDataError)
+async def market_error_handler(request: Request, exc: MarketDataError) -> JSONResponse:
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+
+@app.exception_handler(InstrumentNotFound)
+async def instrument_error_handler(request: Request, exc: InstrumentNotFound) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.get("/api/market/instruments")
+def market_instruments() -> dict:
+    items = market_data.get_active_usdt_futures()
+    return {"exchange": "bitunix", "count": len(items), "items": items}
+
+
+@app.get("/api/market/candles")
+def market_candles(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+    interval: Literal["1m", "5m", "15m", "1h", "4h"] = "1m",
+    limit: int = Query(default=5, ge=1, le=200),
+    closed_only: bool = True,
+) -> dict:
+    return market_data.get_candles(symbol, interval, limit, closed_only)
 
 
 @app.get("/api/market/tickers")
@@ -22,15 +48,8 @@ def health() -> dict[str, str]:
 
 @app.get("/api/market/ticker")
 def market_ticker() -> dict[str, str | float]:
-    url = "https://fapi.bitunix.com/api/v1/futures/market/tickers?symbols=BTCUSDT"
     try:
-        with urlopen(url, timeout=10) as response:
-            payload = json.load(response)
-
-        if payload["code"] != 0:
-            raise ValueError("Bitunix returned an error")
-
-        ticker = payload["data"][0]
+        ticker = market_data.fetch_rows("tickers", {"symbols": "BTCUSDT"})[0]
         if ticker["symbol"] != "BTCUSDT":
             raise ValueError("Unexpected symbol")
 
@@ -50,7 +69,5 @@ def market_ticker() -> dict[str, str | float]:
             "change_24h_pct": round(float(change), 4),
             "volume_24h_usdt": str(volume),
         }
-    except (URLError, TimeoutError, OSError) as exc:
-        raise HTTPException(502, "Не удалось получить ответ от Bitunix") from exc
     except (ValueError, KeyError, IndexError, TypeError, InvalidOperation) as exc:
         raise HTTPException(502, "Bitunix вернул некорректные рыночные данные") from exc
