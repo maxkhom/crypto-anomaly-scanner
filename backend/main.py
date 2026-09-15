@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from bitunix import InstrumentNotFound, MarketDataError, market_data
 from market import get_market
 from price_changes import calculate_price_changes
+from relative_volume import calculate_relative_volume
 
 app = FastAPI(title="Crypto Anomaly Scanner")
 
@@ -63,6 +64,40 @@ def price_changes(
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "crypto-anomaly-scanner"}
+
+
+@app.get("/api/scanner/metrics")
+def scanner_metrics(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+) -> dict:
+    source = market_data.get_candles(symbol, "1m", 107, True)
+    as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
+    return {
+        "exchange": "bitunix", "symbol": symbol,
+        "as_of": source["as_of"], "fetched_at": source["fetched_at"],
+        "source_quality": source["data_quality"],
+        "source_rejected_count": source["rejected_count"],
+        "closure_basis": source["closure_basis"],
+        **calculate_price_changes(source["items"], as_of_ms),
+        "relative_volume": calculate_relative_volume(source["items"], as_of_ms),
+    }
+
+
+@app.get("/api/scanner/relative-volume")
+def relative_volume(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+) -> dict:
+    # Two extra rows allow for the current minute and predecessor validation.
+    source = market_data.get_candles(symbol, "1m", 107, True)
+    as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
+    return {
+        "exchange": "bitunix", "symbol": symbol,
+        "as_of": source["as_of"], "fetched_at": source["fetched_at"],
+        "source_quality": source["data_quality"],
+        "source_rejected_count": source["rejected_count"],
+        "closure_basis": source["closure_basis"],
+        **calculate_relative_volume(source["items"], as_of_ms),
+    }
 
 
 @app.get("/api/market/ticker")

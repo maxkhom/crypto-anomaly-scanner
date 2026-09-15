@@ -341,3 +341,12 @@ footer {
   .metric strong { font-size: 23px; }
   .price-reference, .metric-note { padding-inline: 14px; }
 }
+
+.rvol-panel { display: grid; grid-template-columns: 1fr 2fr; gap: 24px; padding: 24px; border-top: 1px solid #253043; }
+.rvol-panel h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.rvol-value { display: block; color: #9ae8d6; font-size: 30px; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+.rvol-panel p { color: #aab8ca; font-size: 12px; line-height: 1.7; }
+.rvol-details p + p { margin-top: 7px; }
+.rvol-details strong { color: #e5ecf5; font-weight: 500; }
+.rvol-details .rvol-warning { color: #c4b98f; }
+@media (max-width: 680px) { .rvol-panel { grid-template-columns: 1fr; padding: 18px 14px; gap: 16px; } }

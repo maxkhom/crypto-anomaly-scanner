@@ -14,7 +14,20 @@ type Result = {
   reference_price: string | null
   source_rejected_count: number
   changes: Record<typeof periods[number], Metric>
+  relative_volume: {
+    rvol: number | null
+    status: string
+    reason: string | null
+    current_volume_usdt: string | null
+    baseline_average_volume_usdt: string | null
+    missing_count: number
+    warning_count: number
+    current_from: string
+    current_to: string
+  }
 }
+const volumeFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
+const rvolFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 4 })
 const format = new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: 2, maximumFractionDigits: 4, signDisplay: 'exceptZero',
 })
@@ -32,10 +45,10 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
     // Delay dispatch by one event-loop turn to avoid duplicate development effects.
     const start = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/scanner/price-changes?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal })
+        const response = await fetch(`/api/scanner/metrics?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal })
         if (!response.ok) throw new Error(`Не удалось получить расчёты (HTTP ${response.status}). Повторите запрос.`)
         const result: Result = await response.json()
-        if (result.symbol !== symbol || !Number.isFinite(Date.parse(result.reference_time)) || !result.changes || periods.some((period) => {
+        if (result.symbol !== symbol || !result.relative_volume || (result.relative_volume.rvol !== null && !Number.isFinite(result.relative_volume.rvol)) || !Number.isFinite(Date.parse(result.reference_time)) || !result.changes || periods.some((period) => {
           const metric = result.changes[period]
           return !metric || (metric.percent !== null && !Number.isFinite(metric.percent))
         })) throw new Error('Неожиданный формат ответа сервера.')
@@ -62,7 +75,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
   return (
     <section className="panel price-panel" aria-label={`Изменения цены ${symbol}`} aria-busy={loading}>
       <div className="toolbar">
-        <div><h2>{symbol} · Изменения цены</h2><p>По закрытиям минутных свечей</p></div>
+        <div><h2>{symbol} · Цена и объём</h2><p>По завершённым минутным свечам</p></div>
         <div className="controls">
           <button className="refresh" disabled={loading} onClick={refresh}>{loading ? 'Загрузка…' : 'Обновить расчёты'}</button>
           <button className="close-panel" onClick={onClose} aria-label="Закрыть панель монеты">×</button>
@@ -83,6 +96,20 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
               {metric.warning_count > 0 && <small>Предупреждений о свечах: {metric.warning_count}</small>}
             </div>
           })}
+        </div>
+        <div className="rvol-panel">
+          <div>
+            <h3>Relative Volume · 5 минут</h3>
+            <strong className="rvol-value">{data.relative_volume.status === 'ok' && data.relative_volume.rvol !== null ? `${rvolFormat.format(data.relative_volume.rvol)}x` : '—'}</strong>
+            <p>1x — средний объём; выше 1x — выше среднего.</p>
+          </div>
+          <div className="rvol-details">
+            <p>Последние 5 минут: <strong>{data.relative_volume.current_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(data.relative_volume.current_volume_usdt))} USDT`}</strong></p>
+            <p>Среднее предыдущих 20 окон: <strong>{data.relative_volume.baseline_average_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(data.relative_volume.baseline_average_volume_usdt))} USDT`}</strong></p>
+            <p>Окно: {new Date(data.relative_volume.current_from).toLocaleTimeString('ru-RU')}–{new Date(data.relative_volume.current_to).toLocaleTimeString('ru-RU')} (местное время)</p>
+            {data.relative_volume.status !== 'ok' && <p className="rvol-warning">{data.relative_volume.reason === 'zero_baseline' ? 'Средний исторический объём равен нулю; RVOL не определён.' : data.relative_volume.reason === 'missing_candles' ? `Недостаточно данных: отсутствует минут — ${data.relative_volume.missing_count}.` : 'Некорректные данные объёма.'}</p>}
+            {data.relative_volume.warning_count > 0 && <p className="rvol-warning">Свечей с предупреждением об открытии: {data.relative_volume.warning_count}. Объёмы прошли проверку.</p>}
+          </div>
         </div>
         {periods.some((period) => data.changes[period].warning_count > 0) && <p className="metric-note">У части свечей открытие вне диапазона. Расчёт выполнен по проверенным ценам закрытия.</p>}
         {data.source_rejected_count > 0 && <p className="notice">Отклонено свечей: {data.source_rejected_count}. Периоды с пропусками не рассчитываются.</p>}
