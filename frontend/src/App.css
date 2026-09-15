@@ -1,0 +1,307 @@
+.terminal {
+  max-width:1320px;
+  margin:0 auto;
+  padding:44px 32px;
+}
+
+.header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:24px;
+  margin-bottom:34px;
+}
+
+.eyebrow {
+  color:#71ddc5;
+  font-size:11px;
+  letter-spacing:2px;
+  font-weight:700;
+  margin-bottom:12px;
+}
+
+h1 {
+  font-size:clamp(24px,3.5vw,36px);
+  letter-spacing:-1px;
+  line-height:1.2;
+}
+
+.subtitle {
+  color:#9baabe;
+  margin-top:12px;
+}
+
+.badge {
+  border:1px solid #30433f;
+  background:#132824;
+  color:#9ae8d6;
+  padding:9px 12px;
+  border-radius:6px;
+  white-space:nowrap;
+  font-size:12px;
+}
+
+.summary {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  background:#111a26;
+  border:1px solid #253043;
+  border-radius:10px;
+  margin-bottom:24px;
+}
+
+.summary>div {
+  padding:22px 24px;
+}
+
+.summary>div+div {
+  border-left:1px solid #253043;
+}
+
+.summary span {
+  display:block;
+  color:#9baabe;
+  font-size:12px;
+  margin-bottom:9px;
+}
+
+.summary strong {
+  font-size:23px;
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+
+.panel {
+  background:#101823;
+  border:1px solid #253043;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.toolbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:22px 24px;
+}
+
+.toolbar h2 {
+  font-size:18px;
+  font-weight:600;
+}
+
+.toolbar p {
+  font-size:12px;
+  color:#9baabe;
+  margin-top:5px;
+}
+
+.controls {
+  display:flex;
+  gap:10px;
+}
+
+input {
+  width:240px;
+  background:#0b111b;
+  border:1px solid #334155;
+  border-radius:6px;
+  padding:11px 13px;
+  color:#e5ecf5;
+}
+
+input::placeholder {
+  color:#92a1b5;
+}
+
+.refresh {
+  background:#71ddc5;
+  color:#09251f;
+  border:0;
+  border-radius:6px;
+  padding:11px 18px;
+  font-weight:650;
+}
+
+.refresh:hover:not(:disabled) {
+  background:#95edd9;
+}
+
+.table-scroll {
+  max-height:65vh;
+  overflow:auto;
+}
+
+table {
+  border-collapse:separate;
+  border-spacing:0;
+  width:100%;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+th {
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#172130;
+  border-block:1px solid #253043;
+}
+
+th,td {
+  text-align:right;
+  padding:14px 24px;
+}
+
+th:first-child,td:first-child {
+  text-align:left;
+  position:sticky;
+  left:0;
+  background:#101823;
+}
+
+th:first-child {
+  z-index:3;
+  background:#172130;
+}
+
+th button {
+  border:0;
+  background:transparent;
+  color:#aab8ca;
+  font-size:12px;
+  font-weight:600;
+  padding:0;
+  min-height:24px;
+}
+
+th button span {
+  margin-left:6px;
+  color:#71ddc5;
+}
+
+td {
+  border-bottom:1px solid #1d2939;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:13px;
+}
+
+td:first-child {
+  font-family:inherit;
+}
+
+td small {
+  display:block;
+  color:#7f91a7;
+  font-size:10px;
+  margin-top:4px;
+}
+
+tbody tr:hover td {
+  background:#192536;
+}
+
+.positive {
+  color:#71ddad;
+}
+
+.negative {
+  color:#ff8c9c;
+}
+
+.notice {
+  padding:14px 24px;
+  background:#2b2519;
+  color:#f0d59d;
+  border-top:1px solid #4b3e26;
+  line-height:1.6;
+}
+
+.notice p {
+  margin-top:8px;
+  overflow-wrap:anywhere;
+}
+
+.error {
+  background:#30202a;
+  color:#ffacb5;
+  border-color:#573340;
+}
+
+.empty {
+  padding:48px 24px;
+  text-align:center;
+  color:#aab8ca;
+}
+
+footer {
+  color:#8192a9;
+  font-size:12px;
+  margin-top:18px;
+  line-height:1.7;
+}
+
+@media(max-width:680px) {
+  .terminal {
+    padding:26px 14px;
+  }
+  .header {
+    align-items:flex-start;
+    flex-direction:column;
+    gap:16px;
+    margin-bottom:24px;
+  }
+  .summary {
+    grid-template-columns:1fr;
+  }
+  .summary>div {
+    padding:14px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .summary span {
+    margin:0;
+  }
+  .summary strong {
+    font-size:18px;
+  }
+  .summary>div+div {
+    border-left:0;
+    border-top:1px solid #253043;
+  }
+  .toolbar {
+    padding:18px 14px;
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .controls {
+    width:100%;
+  }
+  .search {
+    flex:1;
+    min-width:0;
+  }
+  input {
+    width:100%;
+    font-size:16px;
+  }
+  .refresh {
+    padding:10px 13px;
+  }
+  th,td {
+    padding:13px 16px;
+  }
+  .table-scroll {
+    max-height:60vh;
+  }
+  .notice {
+    padding:14px;
+  }
+  footer {
+    font-size:11px;
+  }
+}
+
