@@ -350,3 +350,13 @@ footer {
 .rvol-details strong { color: #e5ecf5; font-weight: 500; }
 .rvol-details .rvol-warning { color: #c4b98f; }
 @media (max-width: 680px) { .rvol-panel { grid-template-columns: 1fr; padding: 18px 14px; gap: 16px; } }
+
+.momentum-panel { border-top: 1px solid #253043; }
+.momentum-panel h3 { margin: 22px 24px 12px; font-size: 14px; }
+.momentum-panel > .metric-note:first-of-type { border: 0; padding-top: 0; }
+.momentum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.momentum-grid .metric strong { font-size: 22px; }
+@media (max-width: 680px) {
+  .momentum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .momentum-panel h3 { margin-inline: 14px; }
+}

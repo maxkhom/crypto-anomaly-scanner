@@ -9,6 +9,7 @@ from bitunix import InstrumentNotFound, MarketDataError, market_data
 from market import get_market
 from price_changes import calculate_price_changes
 from relative_volume import calculate_relative_volume
+from minute_momentum import calculate_minute_momentum
 
 app = FastAPI(title="Crypto Anomaly Scanner")
 
@@ -80,6 +81,7 @@ def scanner_metrics(
         "closure_basis": source["closure_basis"],
         **calculate_price_changes(source["items"], as_of_ms),
         "relative_volume": calculate_relative_volume(source["items"], as_of_ms),
+        "minute_momentum": calculate_minute_momentum(source["items"], as_of_ms),
     }
 
 
