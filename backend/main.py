@@ -29,6 +29,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)
 
 
+@app.get("/api/market/realtime/all")
+async def realtime_all() -> dict:
+    return trade_stream.overview(include_items=True)
+
+
 @app.get("/api/market/realtime/symbols")
 async def realtime_symbols() -> dict:
     return trade_stream.overview()

@@ -133,3 +133,20 @@ class UniverseTests(unittest.TestCase):
             {"symbol": "ETHUSDT", "volume_24h_usdt": "100"},
             {"symbol": "BTCUSDT", "volume_24h_usdt": "100"}]})
         self.assertEqual(list(stream.states), ["BTCUSDT", "ETHUSDT"])
+
+
+class BatchSnapshotTests(unittest.TestCase):
+    def test_batch_contains_independent_states_without_upstream_requests(self):
+        stream = TradeStream()
+        stream.connected = True
+        stream.accept(batch("75000"))
+        with patch("realtime.get_market", side_effect=AssertionError("Unexpected network call")):
+            result = stream.overview(include_items=True)
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["live_count"], 1)
+        rows = {item["symbol"]: item for item in result["items"]}
+        self.assertEqual(rows["BTCUSDT"]["last_trade"]["price"], "75000")
+        self.assertEqual(rows["ETHUSDT"]["status"], "waiting")
+        stream.connected = False
+        self.assertTrue(all(item["status"] == "disconnected" for item in stream.overview(True)["items"]))
+        self.assertNotIn("items", stream.overview())

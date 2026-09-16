@@ -48,7 +48,7 @@ class TradeState:
         self.last_trade = trades[-1]
         self.trade_count += len(trades)
         self.last_received = time.monotonic()
-        self.momentum.add(self.last_received, self.last_trade["price"])
+        self.momentum.add(time.time(), self.last_trade["price"])
         self.last_error = None
 
     def snapshot(self):
@@ -61,7 +61,7 @@ class TradeState:
                 "received_trade_count": self.trade_count,
                 "invalid_messages": self.invalid_messages, "reconnects": self.reconnects,
                 "last_error": self.last_error,
-                "short_momentum": self.momentum.calculate(time.monotonic(), status == "live"),
+                "short_momentum": self.momentum.calculate(time.time(), status == "live"),
                 "as_of": datetime.now(timezone.utc).isoformat()}
 
 class TradeStream:
@@ -83,13 +83,14 @@ class TradeStream:
         self.states = {symbol: TradeState(symbol) for symbol in symbols}
         self.selected_at = market["fetched_at"]
 
-    def overview(self):
+    def overview(self, include_items=False):
         items = [self.snapshot(symbol) for symbol in self.states]
         return {"symbols": list(self.states), "count": len(items),
                 "live_count": sum(item["status"] == "live" for item in items),
                 "connected": self.connected, "selected_at": self.selected_at,
                 "selection": "top_20_by_24h_quote_volume_at_startup",
-                "last_error": self.last_error}
+                "last_error": self.last_error,
+                **({"items": items} if include_items else {})}
 
     def snapshot(self, symbol="BTCUSDT"):
         state = self.states[symbol]

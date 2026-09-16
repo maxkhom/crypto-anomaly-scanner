@@ -7,7 +7,7 @@ class ShortMomentumTests(unittest.TestCase):
     def test_three_windows_and_tempo(self):
         data = ShortMomentum()
         for second in range(41):
-            data.add(second, str(100 + second))
+            data.add(second - 0.1, str(100 + second))
         result = data.calculate(40, True)
         self.assertEqual(result["status"], "ok")
         self.assertEqual([x["percent"] for x in result["windows"]], [9.0909, 8.3333, 7.6923])
@@ -23,7 +23,7 @@ class ShortMomentumTests(unittest.TestCase):
         data = ShortMomentum()
         for second in range(41):
             if second not in (18, 19, 20):
-                data.add(second, "100")
+                data.add(second - 0.1, "100")
         result = data.calculate(40, True)
         self.assertEqual(result["status"], "missing_data")
         self.assertIsNone(result["windows"][0]["percent"])
@@ -37,6 +37,52 @@ class ShortMomentumTests(unittest.TestCase):
     def test_future_sample_not_used_for_boundary(self):
         data = ShortMomentum()
         for second in range(40):
-            data.add(second, "100")
+            data.add(second - 0.1, "100")
         data.add(40.5, "200")
         self.assertEqual(data.calculate(41, True)["windows"][-1]["percent"], 0)
+
+
+class HistoryTests(unittest.TestCase):
+    def build(self, final="110", missing=False):
+        data = ShortMomentum()
+        for second in range(1811):
+            if missing and second in (898, 899, 900):
+                continue
+            data.add(second - 0.1, final if second == 1810 else "100")
+        return data
+
+    def test_current_is_excluded_and_zero_baseline_is_valid(self):
+        result = self.build().calculate(1810, True)["history"]
+        self.assertEqual(result["valid_intervals"], 180)
+        self.assertEqual(result["percentile"], 100)
+        self.assertEqual(result["baseline_to"], result["evaluated_from"])
+
+    def test_equal_moves_do_not_count_as_exceeded(self):
+        self.assertEqual(self.build("100").calculate(1810, True)["history"]["percentile"], 0)
+
+    def test_missing_boundary_blocks_score(self):
+        result = self.build(missing=True).calculate(1810, True)["history"]
+        self.assertEqual(result["status"], "missing_data")
+        self.assertEqual(result["missing_intervals"], 2)
+        self.assertIsNone(result["percentile"])
+
+    def test_downward_move_uses_absolute_size(self):
+        self.assertEqual(self.build("90").calculate(1810, True)["history"]["percentile"], 100)
+
+    def test_closed_result_does_not_change_with_future_trade(self):
+        data = self.build()
+        before = data.calculate(1810, True)
+        data.add(1810.5, "200")
+        after = data.calculate(1811, True)
+        self.assertEqual(before["history"], after["history"])
+        self.assertEqual(before["windows"][-1]["percent"], after["windows"][-1]["percent"])
+        self.assertLessEqual(len(data.boundaries), 182)
+
+    def test_common_boundaries_despite_different_start_times(self):
+        first, second = ShortMomentum(), ShortMomentum()
+        for tick in range(51):
+            first.add(tick + 0.1, "100")
+            if tick > 3:
+                second.add(tick + 0.5, "100")
+        self.assertEqual(first.calculate(51, True)["windows"][-1]["to_time"],
+                         second.calculate(51, True)["windows"][-1]["to_time"])
