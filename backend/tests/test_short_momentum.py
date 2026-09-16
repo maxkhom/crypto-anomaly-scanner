@@ -28,11 +28,34 @@ class ShortMomentumTests(unittest.TestCase):
         self.assertEqual(result["status"], "missing_data")
         self.assertIsNone(result["windows"][0]["percent"])
 
-    def test_silence_restarts_warmup(self):
+    def test_silence_preserves_history_and_marks_gaps(self):
+        data = ShortMomentum()
+        for second in range(101):
+            data.add(second - 0.1, "100")
+        data.calculate(100, True)
+        saved = dict(data.boundaries)
+        started = data.started
+        data.add(130, "110")
+        result = data.calculate(130, True)
+        self.assertEqual(data.started, started)
+        self.assertEqual(result["status"], "missing_data")
+        self.assertTrue(all(dict(data.boundaries)[stamp] == price for stamp, price in saved.items()))
+        self.assertGreater(result["history"]["valid_intervals"], 0)
+        self.assertTrue(all(window["percent"] is None for window in result["windows"]))
+        for second in range(131, 161):
+            data.add(second - 0.1, "110")
+        self.assertEqual(data.calculate(160, True)["windows"][-1]["status"], "ok")
+
+    def test_long_silence_expires_old_data_without_new_warmup(self):
         data = ShortMomentum()
         data.add(0, "100")
-        data.add(50, "110")
-        self.assertEqual(data.calculate(50, True)["status"], "warming_up")
+        data.add(100000, "110")
+        result = data.calculate(100000, True)
+        self.assertEqual(data.started, 0)
+        self.assertEqual(len(data.boundaries), 182)
+        self.assertEqual(result["history"]["status"], "missing_data")
+        self.assertEqual(result["history"]["valid_intervals"], 0)
+        self.assertIsNone(result["history"]["percentile"])
 
     def test_future_sample_not_used_for_boundary(self):
         data = ShortMomentum()

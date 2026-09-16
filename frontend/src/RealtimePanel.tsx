@@ -20,6 +20,9 @@ type Universe = { items: Snapshot[]; symbols: string[]; count: number; live_coun
 export default function RealtimePanel() {
   const [symbol, setSymbol] = useState('')
   const [sort, setSort] = useState('strength')
+  const [direction, setDirection] = useState('all')
+  const [minMove, setMinMove] = useState(0)
+  const [minUnusual, setMinUnusual] = useState(0)
   const [universe, setUniverse] = useState<Universe | null>(null)
   const [error, setError] = useState(false)
   useEffect(() => {
@@ -50,7 +53,14 @@ export default function RealtimePanel() {
     timer = setTimeout(update, 0)
     return () => { active = false; clearTimeout(timer); controller?.abort() }
   }, [])
-  const rows = [...(universe?.items ?? [])].sort((a, b) => {
+  const rows = (universe?.items ?? []).filter((item) => {
+    const move = lastMove(item)
+    if (direction === 'up' && (move === null || move <= 0)) return false
+    if (direction === 'down' && (move === null || move >= 0)) return false
+    if (minMove > 0 && (move === null || Math.abs(move) < minMove)) return false
+    const unusual = unusualValue(item)
+    return minUnusual === 0 || (unusual !== null && unusual >= minUnusual)
+  }).sort((a, b) => {
     if (sort === 'symbol') return a.symbol.localeCompare(b.symbol)
     const av = sort === 'unusual' ? unusualValue(a) : lastMove(a), bv = sort === 'unusual' ? unusualValue(b) : lastMove(b)
     if (av === null) return bv === null ? a.symbol.localeCompare(b.symbol) : 1
@@ -58,6 +68,14 @@ export default function RealtimePanel() {
     const difference = sort === 'growth' || sort === 'unusual' ? bv - av : sort === 'fall' ? av - bv : Math.abs(bv) - Math.abs(av)
     return difference || a.symbol.localeCompare(b.symbol)
   })
+  const readyMoves = (universe?.items ?? []).filter((item) => lastMove(item) !== null).length
+  const readyUnusual = (universe?.items ?? []).filter((item) => unusualValue(item) !== null).length
+  const needsMove = direction !== 'all' || minMove > 0
+  const emptyMessage = error ? 'Данные временно недоступны'
+    : !universe?.count ? 'Ожидаем список контрактов…'
+      : needsMove && readyMoves === 0 ? 'Нет готовых изменений за последние 10 секунд: история накапливается, есть пропуски или данные устарели. Фильтр направления пока не может определить рост и падение.'
+        : minUnusual > 0 && readyUnusual === 0 ? 'Нет готовых оценок необычности. Дождитесь накопления истории без пропусков или отключите порог необычности.'
+          : 'Среди доступных расчётов нет монет, соответствующих фильтрам. Снизьте пороги или сбросьте фильтры.'
   const selected = universe?.items.find((item) => item.symbol === symbol) ?? null
   return <div>
     <section className="panel price-panel" aria-label="Таблица быстрых движений">
@@ -69,6 +87,29 @@ export default function RealtimePanel() {
           </select>
         </label>
       </div>
+      <div className="scanner-filters">
+        <label className="realtime-selector">Направление
+          <select value={direction} onChange={(event) => setDirection(event.target.value)}>
+            <option value="all">Все</option><option value="up">Только рост</option><option value="down">Только падение</option>
+          </select>
+        </label>
+        <label className="realtime-selector">Движение за последние 10 с, по модулю
+          <select value={minMove} onChange={(event) => setMinMove(Number(event.target.value))}>
+            <option value={0}>Без ограничения</option>
+            {[0.01, 0.05, 0.1, 0.5, 1].map((value) => <option key={value} value={value}>≥ {value.toLocaleString('ru-RU')}%</option>)}
+          </select>
+        </label>
+        <label className="realtime-selector">Необычность цены
+          <select value={minUnusual} onChange={(event) => setMinUnusual(Number(event.target.value))}>
+            <option value={0}>Без ограничения</option>
+            {[90, 95, 99].map((value) => <option key={value} value={value}>≥ {value}%</option>)}
+          </select>
+        </label>
+        <button className="refresh" onClick={() => { setDirection('all'); setMinMove(0); setMinUnusual(0) }}>Сбросить фильтры</button>
+      </div>
+      <p className="metric-note">Показано {rows.length} из {universe?.count ?? 0}. Готовых изменений за 10 с: {readyMoves}. Готовых оценок необычности: {readyUnusual}. Фильтры применяются совместно к последнему завершённому интервалу.
+        {minUnusual > 0 && ' Монеты без готовой оценки необычности скрыты; накопление истории продолжается.'}
+      </p>
       {error && <p className="notice error" role="alert">Нет свежих данных backend. Повторяем подключение…</p>}
       <div className="table-scroll" tabIndex={0} role="region" aria-label="Быстрые движения, доступна горизонтальная прокрутка">
         <table><thead><tr><th>Монета</th><th>Цена, USDT</th><th>Самый ранний · 10 с</th><th>Предыдущий · 10 с</th><th>Последний завершённый · 10 с</th><th>Темп, п.п.</th><th title="Доля предыдущих движений, которые последнее превысило по абсолютной величине">Необычность цены</th><th>Состояние</th></tr></thead>
@@ -86,7 +127,7 @@ export default function RealtimePanel() {
               {item.seconds_since_last_trade_received !== null ? ` · Получено ${item.seconds_since_last_trade_received.toFixed(1)} с назад` : ''}</small></td>
           </tr>)}</tbody>
         </table>
-        {!rows.length && <p className="empty">{error ? 'Данные временно недоступны' : 'Ожидаем список контрактов…'}</p>}
+        {!rows.length && <p className="empty">{emptyMessage}</p>}
       </div>
       <p className="metric-note">Сила движения — абсолютное изменение последнего интервала. Необычность цены — доля движений предыдущих 30 минут, которые последнее превысило по модулю. Это не вероятность успеха сделки и ещё не Anomaly Score. Границы интервалов общие для всех монет: :00, :10, :20… Время определяется получением данных сервером.</p>
     </section>

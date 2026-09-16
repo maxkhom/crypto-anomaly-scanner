@@ -25,8 +25,8 @@ class ShortMomentum:
             return
         # Large gaps must not create unbounded work.
         if now - self.next_boundary > 1830:
-            self.__init__()
-            return
+            self.boundaries.clear()
+            self.next_boundary = math.floor(now / 10) * 10 - 1810
         while self.next_boundary <= now:
             price = None
             if self.last_sample and 0 < self.next_boundary - self.last_sample[0] <= 2:
@@ -35,7 +35,7 @@ class ShortMomentum:
             self.next_boundary += 10
 
     def add(self, now, price):
-        if self.last_sample and (now < self.last_sample[0] or now - self.last_sample[0] > 15):
+        if self.last_sample and now < self.last_sample[0]:
             self.__init__()
         self.advance(now)
         if self.started is None:

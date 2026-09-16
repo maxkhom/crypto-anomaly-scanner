@@ -363,3 +363,8 @@ footer {
 
 .realtime-selector { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; color: #aab8ca; font-size: 14px; }
 .realtime-selector select { background: #101823; color: #e5ecf5; border: 1px solid #334155; border-radius: 6px; padding: 10px 14px; font-size: 16px; }
+
+.scanner-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; padding: 0 24px 18px; }
+.scanner-filters .realtime-selector { flex-direction: column; align-items: stretch; margin: 0; gap: 8px; }
+.scanner-filters .refresh { min-height: 44px; }
+@media (max-width: 680px) { .scanner-filters { padding-inline: 14px; } .scanner-filters .realtime-selector { width: 100%; } }
