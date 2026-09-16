@@ -1,4 +1,4 @@
-"""A single public BTC trade connection owned by the application lifecycle."""
+"""A shared public trade connection owned by the application lifecycle."""
 import asyncio
 import json
 import logging
@@ -12,8 +12,9 @@ from short_momentum import ShortMomentum
 logger = logging.getLogger(__name__)
 
 
-class TradeStream:
-    def __init__(self):
+class TradeState:
+    def __init__(self, symbol="BTCUSDT"):
+        self.symbol = symbol
         self.connected = False
         self.last_trade = None
         self.last_received = None
@@ -26,7 +27,7 @@ class TradeStream:
     def accept(self, payload):
         if not isinstance(payload, dict):
             raise ValueError("Expected an object")
-        if payload.get("ch") != "trade" or payload.get("symbol") != "BTCUSDT":
+        if payload.get("ch") != "trade" or payload.get("symbol") != self.symbol:
             return
         rows = payload.get("data")
         if not isinstance(rows, list) or not rows:
@@ -53,7 +54,7 @@ class TradeStream:
         age = None if self.last_received is None else time.monotonic() - self.last_received
         status = "disconnected" if not self.connected else (
             "waiting" if age is None else "stale" if age > 15 else "live")
-        return {"exchange": "bitunix", "symbol": "BTCUSDT", "status": status,
+        return {"exchange": "bitunix", "symbol": self.symbol, "status": status,
                 "connected": self.connected, "last_trade": self.last_trade,
                 "seconds_since_last_trade_received": None if age is None else round(age, 2),
                 "received_trade_count": self.trade_count,
@@ -61,6 +62,45 @@ class TradeStream:
                 "last_error": self.last_error,
                 "short_momentum": self.momentum.calculate(time.monotonic(), status == "live"),
                 "as_of": datetime.now(timezone.utc).isoformat()}
+
+class TradeStream:
+    def __init__(self, symbols=("BTCUSDT", "ETHUSDT")):
+        self.states = {symbol: TradeState(symbol) for symbol in symbols}
+        self.connected = False
+        self.reconnects = 0
+        self.last_error = None
+
+    def snapshot(self, symbol="BTCUSDT"):
+        state = self.states[symbol]
+        state.connected = self.connected
+        state.reconnects = self.reconnects
+        result = state.snapshot()
+        result["last_error"] = self.last_error
+        result["subscribed_symbols"] = list(self.states)
+        return result
+
+    def reset_history(self):
+        for state in self.states.values():
+            state.last_received = None
+            state.last_trade = None
+            state.momentum = ShortMomentum()
+
+    def accept(self, payload):
+        if not isinstance(payload, dict):
+            raise ValueError("Expected an object")
+        if payload.get("ch") != "trade":
+            return False
+        state = self.states.get(payload.get("symbol"))
+        if state is None:
+            return False
+        try:
+            state.accept(payload)
+        except (ValueError, TypeError, KeyError, AttributeError, InvalidOperation):
+            state.invalid_messages += 1
+            state.momentum = ShortMomentum()
+            return False
+        self.last_error = None
+        return True
 
     async def run(self):
         delay = 1
@@ -70,11 +110,9 @@ class TradeStream:
                     async with connect("wss://fapi.bitunix.com/public/", open_timeout=10,
                                        close_timeout=3, ping_interval=None) as socket:
                         self.connected = True
-                        self.last_received = None
-                        self.last_trade = None
-                        self.momentum = ShortMomentum()
+                        self.reset_history()
                         await socket.send(json.dumps({"op": "subscribe", "args": [
-                            {"symbol": "BTCUSDT", "ch": "trade"}]}))
+                            {"symbol": symbol, "ch": "trade"} for symbol in self.states]}))
                         next_ping = time.monotonic()
                         last_message = next_ping
                         while True:
@@ -89,14 +127,14 @@ class TradeStream:
                             except TimeoutError:
                                 continue
                             last_message = time.monotonic()
-                            before = self.trade_count
                             try:
-                                self.accept(json.loads(raw))
+                                received = self.accept(json.loads(raw))
                             except (ValueError, TypeError, KeyError, AttributeError, InvalidOperation):
-                                self.invalid_messages += 1
-                                self.momentum = ShortMomentum()
+                                for state in self.states.values():
+                                    state.invalid_messages += 1
+                                    state.momentum = ShortMomentum()
                                 continue
-                            if self.trade_count > before:
+                            if received:
                                 delay = 1
                 except Exception as exc:
                     self.last_error = f"{type(exc).__name__}: {exc}"

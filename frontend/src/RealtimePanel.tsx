@@ -15,6 +15,19 @@ const states: Record<string, string> = {
 }
 
 export default function RealtimePanel() {
+  const [symbol, setSymbol] = useState('BTCUSDT')
+  return <div>
+    <label className="realtime-selector">Монета быстрого потока{' '}
+      <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
+        <option value="BTCUSDT">BTCUSDT</option>
+        <option value="ETHUSDT">ETHUSDT</option>
+      </select>
+    </label>
+    <RealtimeDetails key={symbol} symbol={symbol} />
+  </div>
+}
+
+function RealtimeDetails({ symbol }: { symbol: string }) {
   const [data, setData] = useState<Snapshot | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -25,10 +38,10 @@ export default function RealtimePanel() {
       controller = new AbortController()
       const timeout = setTimeout(() => controller?.abort(), 5000)
       try {
-        const response = await fetch('/api/market/realtime', { signal: controller.signal, cache: 'no-store' })
+        const response = await fetch(`/api/market/realtime?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal, cache: 'no-store' })
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
         const result: Snapshot = await response.json()
-        if (result.symbol !== 'BTCUSDT' || !states[result.status] || !Number.isFinite(Date.parse(result.as_of))
+        if (result.symbol !== symbol || !states[result.status] || !Number.isFinite(Date.parse(result.as_of))
           || !result.short_momentum || !Array.isArray(result.short_momentum.windows)
           || result.short_momentum.windows.some((item) => !item || (item.percent !== null && !Number.isFinite(item.percent)))
           || (result.short_momentum.change_pp !== null && !Number.isFinite(result.short_momentum.change_pp))) {
@@ -44,14 +57,14 @@ export default function RealtimePanel() {
     }
     timer = setTimeout(update, 0)
     return () => { active = false; clearTimeout(timer); controller?.abort() }
-  }, [])
+  }, [symbol])
 
   const live = !error && data?.status === 'live'
   const momentum = data?.short_momentum
   const showChange = live && momentum?.change_pp !== null && momentum?.change_pp !== undefined
-  return <section className="panel price-panel" aria-label="Поток BTCUSDT">
+  return <section className="panel price-panel" aria-label={`Поток ${symbol}`}>
     <div className="toolbar">
-      <div><h2>BTCUSDT · Быстрые движения</h2><p>Поток сделок Bitunix · обновление панели каждую секунду</p></div>
+      <div><h2>{symbol} · Быстрые движения</h2><p>Поток сделок Bitunix · обновление панели каждую секунду</p></div>
       <span className={live ? 'positive' : 'realtime-status'} role="status">{error ? 'Нет свежих данных' : data ? states[data.status] : 'Подключение…'}</span>
     </div>
     {error && <p className="notice error">{error}</p>}

@@ -30,8 +30,12 @@ app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)
 
 
 @app.get("/api/market/realtime")
-async def realtime_status() -> dict:
-    return trade_stream.snapshot()
+async def realtime_status(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+) -> dict:
+    if symbol not in trade_stream.states:
+        raise HTTPException(404, "Поток этой монеты пока не подключён")
+    return trade_stream.snapshot(symbol)
 
 
 @app.exception_handler(MarketDataError)
