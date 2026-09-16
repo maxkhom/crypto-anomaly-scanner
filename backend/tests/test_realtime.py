@@ -107,3 +107,29 @@ class MultiSymbolTests(unittest.TestCase):
         message["symbol"] = "SOLUSDT"
         self.assertFalse(stream.accept(message))
         self.assertNotIn("SOLUSDT", stream.states)
+
+
+class UniverseTests(unittest.TestCase):
+    def test_selects_twenty_by_numeric_volume(self):
+        stream = TradeStream(symbols=(), auto_select=True)
+        market = {"fetched_at": "2026-09-16T00:00:00+00:00", "items": [
+            {"symbol": f"COIN{i}USDT", "volume_24h_usdt": str(i)} for i in range(25)]}
+        stream.select_symbols(market)
+        self.assertEqual(len(stream.states), 20)
+        self.assertEqual(list(stream.states)[0], "COIN24USDT")
+        self.assertNotIn("COIN4USDT", stream.states)
+        self.assertEqual(stream.overview()["live_count"], 0)
+        self.assertEqual(stream.selected_at, market["fetched_at"])
+
+    def test_empty_selection_fails_instead_of_silent_connection(self):
+        stream = TradeStream(symbols=())
+        with self.assertRaises(ValueError):
+            stream.select_symbols({"items": [], "fetched_at": "now"})
+        self.assertEqual(stream.overview()["symbols"], [])
+
+    def test_fewer_than_twenty_and_ties(self):
+        stream = TradeStream(symbols=())
+        stream.select_symbols({"fetched_at": "now", "items": [
+            {"symbol": "ETHUSDT", "volume_24h_usdt": "100"},
+            {"symbol": "BTCUSDT", "volume_24h_usdt": "100"}]})
+        self.assertEqual(list(stream.states), ["BTCUSDT", "ETHUSDT"])

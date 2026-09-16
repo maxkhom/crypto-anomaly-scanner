@@ -14,16 +14,53 @@ const states: Record<string, string> = {
   live: 'Сделки поступают', waiting: 'Ожидание сделок', stale: 'Данные устарели', disconnected: 'Нет соединения с биржей',
 }
 
+type Universe = { symbols: string[]; count: number; live_count: number; last_error: string | null }
+
 export default function RealtimePanel() {
-  const [symbol, setSymbol] = useState('BTCUSDT')
+  const [symbol, setSymbol] = useState('')
+  const [universe, setUniverse] = useState<Universe | null>(null)
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let active = true
+    let timer: ReturnType<typeof setTimeout>
+    let controller: AbortController | undefined
+    async function update() {
+      controller = new AbortController()
+      const timeout = setTimeout(() => controller?.abort(), 5000)
+      try {
+        const response = await fetch('/api/market/realtime/symbols', { signal: controller.signal, cache: 'no-store' })
+        if (!response.ok) throw new Error('Недоступен список')
+        const result: Universe = await response.json()
+        if (!Array.isArray(result.symbols) || result.symbols.some((item) => typeof item !== 'string')
+          || !Number.isInteger(result.live_count)) throw new Error('Некорректный список')
+        if (active) {
+          setUniverse(result)
+          setError(false)
+          setSymbol((previous) => result.symbols.includes(previous) ? previous : result.symbols[0] ?? '')
+        }
+      } catch {
+        if (active) setError(true)
+      } finally {
+        clearTimeout(timeout)
+        if (active) timer = setTimeout(update, 5000)
+      }
+    }
+    timer = setTimeout(update, 0)
+    return () => { active = false; clearTimeout(timer); controller?.abort() }
+  }, [])
   return <div>
-    <label className="realtime-selector">Монета быстрого потока{' '}
+    <p className="metric-note">{error ? 'Не удалось обновить список потоков. Повторяем запрос…'
+      : universe?.count ? `Выбрано контрактов: ${universe.count}. Свежие сделки: ${universe.live_count}.`
+        : 'Выбираем контракты для потока…'}
+      {' '}До 20 контрактов по суточному объёму на момент запуска backend.
+      {!error && universe?.last_error && ' Соединение восстанавливается автоматически.'}
+    </p>
+    {!!universe?.symbols.length && <label className="realtime-selector">Монета быстрого потока{' '}
       <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-        <option value="BTCUSDT">BTCUSDT</option>
-        <option value="ETHUSDT">ETHUSDT</option>
+        {universe.symbols.map((item) => <option key={item} value={item}>{item}</option>)}
       </select>
-    </label>
-    <RealtimeDetails key={symbol} symbol={symbol} />
+    </label>}
+    {symbol && <RealtimeDetails key={symbol} symbol={symbol} />}
   </div>
 }
 

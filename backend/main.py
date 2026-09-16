@@ -29,6 +29,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)
 
 
+@app.get("/api/market/realtime/symbols")
+async def realtime_symbols() -> dict:
+    return trade_stream.overview()
+
+
 @app.get("/api/market/realtime")
 async def realtime_status(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),

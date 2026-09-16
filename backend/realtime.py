@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 
 from websockets.asyncio.client import connect
 from short_momentum import ShortMomentum
+from market import get_market
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +65,31 @@ class TradeState:
                 "as_of": datetime.now(timezone.utc).isoformat()}
 
 class TradeStream:
-    def __init__(self, symbols=("BTCUSDT", "ETHUSDT")):
+    def __init__(self, symbols=("BTCUSDT", "ETHUSDT"), auto_select=False):
+        self.auto_select = auto_select
+        self.selected_at = None
         self.states = {symbol: TradeState(symbol) for symbol in symbols}
         self.connected = False
         self.reconnects = 0
         self.last_error = None
+
+    def select_symbols(self, market):
+        # get_market has already validated active contracts, prices and volumes.
+        ordered = sorted(market["items"],
+                         key=lambda item: (-Decimal(item["volume_24h_usdt"]), item["symbol"]))
+        symbols = list(dict.fromkeys(item["symbol"] for item in ordered))[:20]
+        if not symbols:
+            raise ValueError("Нет доступных контрактов для потока")
+        self.states = {symbol: TradeState(symbol) for symbol in symbols}
+        self.selected_at = market["fetched_at"]
+
+    def overview(self):
+        items = [self.snapshot(symbol) for symbol in self.states]
+        return {"symbols": list(self.states), "count": len(items),
+                "live_count": sum(item["status"] == "live" for item in items),
+                "connected": self.connected, "selected_at": self.selected_at,
+                "selection": "top_20_by_24h_quote_volume_at_startup",
+                "last_error": self.last_error}
 
     def snapshot(self, symbol="BTCUSDT"):
         state = self.states[symbol]
@@ -107,6 +128,8 @@ class TradeStream:
         try:
             while True:
                 try:
+                    if self.auto_select and not self.states:
+                        self.select_symbols(await asyncio.to_thread(get_market))
                     async with connect("wss://fapi.bitunix.com/public/", open_timeout=10,
                                        close_timeout=3, ping_interval=None) as socket:
                         self.connected = True
@@ -148,4 +171,4 @@ class TradeStream:
             self.connected = False
 
 
-trade_stream = TradeStream()
+trade_stream = TradeStream(symbols=(), auto_select=True)
