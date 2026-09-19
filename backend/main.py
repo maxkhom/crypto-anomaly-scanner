@@ -17,6 +17,8 @@ from realtime import trade_stream
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    stop_persistence = asyncio.Event()
+    persistence = asyncio.create_task(trade_stream.persist_history(stop_persistence))
     task = asyncio.create_task(trade_stream.run())
     try:
         yield
@@ -24,6 +26,8 @@ async def lifespan(app: FastAPI):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        stop_persistence.set()
+        await persistence
 
 
 app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)

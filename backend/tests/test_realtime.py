@@ -89,7 +89,7 @@ class MultiSymbolTests(unittest.TestCase):
         self.assertEqual(stream.states["BTCUSDT"].invalid_messages, 0)
         self.assertEqual(stream.states["ETHUSDT"].invalid_messages, 1)
 
-    def test_reconnect_clears_all_price_histories(self):
+    def test_reconnect_clears_live_prices_but_preserves_history(self):
         stream = TradeStream()
         for symbol in stream.states:
             message = batch("100")
@@ -99,7 +99,8 @@ class MultiSymbolTests(unittest.TestCase):
         for state in stream.states.values():
             self.assertIsNone(state.last_trade)
             self.assertIsNone(state.last_received)
-            self.assertIsNone(state.momentum.started)
+            self.assertIsNotNone(state.momentum.started)
+            self.assertIsNone(state.momentum.last_sample)
 
     def test_unsubscribed_symbol_not_added(self):
         stream = TradeStream()

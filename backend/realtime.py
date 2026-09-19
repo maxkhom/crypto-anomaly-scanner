@@ -3,6 +3,8 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
+from history_store import HistoryStore
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -65,13 +67,60 @@ class TradeState:
                 "as_of": datetime.now(timezone.utc).isoformat()}
 
 class TradeStream:
-    def __init__(self, symbols=("BTCUSDT", "ETHUSDT"), auto_select=False):
+    def __init__(self, symbols=("BTCUSDT", "ETHUSDT"), auto_select=False, store=None):
+        self.store = store
+        self.history_loaded = False
+        self.storage_error = None
         self.auto_select = auto_select
         self.selected_at = None
         self.states = {symbol: TradeState(symbol) for symbol in symbols}
         self.connected = False
         self.reconnects = 0
         self.last_error = None
+
+    async def restore_history(self):
+        if not self.store or self.history_loaded:
+            return
+        try:
+            saved = await asyncio.to_thread(self.store.load, time.time())
+            for symbol, state in self.states.items():
+                item = saved.get(symbol)
+                if item and item["rows"]:
+                    state.momentum.started = item["started"]
+                    state.momentum.boundaries.extend(item["rows"])
+                    state.momentum.next_boundary = item["rows"][-1][0] + 10
+                    state.momentum.advance(time.time())
+            self.storage_error = None
+        except Exception as exc:
+            self.storage_error = str(exc)
+            logger.warning("Cannot restore price history: %s", exc)
+        self.history_loaded = True
+
+    async def save_history(self):
+        if not self.store or not self.history_loaded:
+            return
+        now = time.time()
+        snapshots = []
+        for symbol, state in self.states.items():
+            state.momentum.advance(now)
+            snapshots.append((symbol, state.momentum.started, [
+                (stamp, None if price is None else str(price))
+                for stamp, price in state.momentum.boundaries]))
+        try:
+            await asyncio.to_thread(self.store.save, snapshots, now)
+            self.storage_error = None
+        except Exception as exc:
+            self.storage_error = str(exc)
+            logger.warning("Cannot save price history: %s", exc)
+
+    async def persist_history(self, stop):
+        while not stop.is_set():
+            await self.save_history()
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=10)
+            except TimeoutError:
+                pass
+        await self.save_history()
 
     def select_symbols(self, market):
         # get_market has already validated active contracts, prices and volumes.
@@ -89,7 +138,7 @@ class TradeStream:
                 "live_count": sum(item["status"] == "live" for item in items),
                 "connected": self.connected, "selected_at": self.selected_at,
                 "selection": "top_20_by_24h_quote_volume_at_startup",
-                "last_error": self.last_error,
+                "last_error": self.last_error, "storage_error": self.storage_error,
                 **({"items": items} if include_items else {})}
 
     def snapshot(self, symbol="BTCUSDT"):
@@ -105,7 +154,8 @@ class TradeStream:
         for state in self.states.values():
             state.last_received = None
             state.last_trade = None
-            state.momentum = ShortMomentum()
+            state.momentum.last_sample = None
+            state.momentum.advance(time.time())
 
     def accept(self, payload):
         if not isinstance(payload, dict):
@@ -119,7 +169,7 @@ class TradeStream:
             state.accept(payload)
         except (ValueError, TypeError, KeyError, AttributeError, InvalidOperation):
             state.invalid_messages += 1
-            state.momentum = ShortMomentum()
+            state.momentum.last_sample = None
             return False
         self.last_error = None
         return True
@@ -131,6 +181,7 @@ class TradeStream:
                 try:
                     if self.auto_select and not self.states:
                         self.select_symbols(await asyncio.to_thread(get_market))
+                    await self.restore_history()
                     async with connect("wss://fapi.bitunix.com/public/", open_timeout=10,
                                        close_timeout=3, ping_interval=None) as socket:
                         self.connected = True
@@ -156,7 +207,7 @@ class TradeStream:
                             except (ValueError, TypeError, KeyError, AttributeError, InvalidOperation):
                                 for state in self.states.values():
                                     state.invalid_messages += 1
-                                    state.momentum = ShortMomentum()
+                                    state.momentum.last_sample = None
                                 continue
                             if received:
                                 delay = 1
@@ -165,6 +216,8 @@ class TradeStream:
                     logger.warning("Bitunix WebSocket disconnected: %s", self.last_error)
                 finally:
                     self.connected = False
+                    for state in self.states.values():
+                        state.momentum.last_sample = None
                 await asyncio.sleep(delay)
                 self.reconnects += 1
                 delay = min(delay * 2, 30)
@@ -172,4 +225,5 @@ class TradeStream:
             self.connected = False
 
 
-trade_stream = TradeStream(symbols=(), auto_select=True)
+trade_stream = TradeStream(symbols=(), auto_select=True,
+                           store=HistoryStore(Path(__file__).resolve().parent / "data" / "scanner.sqlite3"))

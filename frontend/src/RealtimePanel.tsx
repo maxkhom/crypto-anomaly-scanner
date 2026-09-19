@@ -15,7 +15,7 @@ const states: Record<string, string> = {
   live: 'Сделки поступают', waiting: 'Ожидание сделок', stale: 'Данные устарели', disconnected: 'Нет соединения с биржей',
 }
 
-type Universe = { items: Snapshot[]; symbols: string[]; count: number; live_count: number; last_error: string | null }
+type Universe = { storage_error?: string | null; items: Snapshot[]; symbols: string[]; count: number; live_count: number; last_error: string | null }
 
 export default function RealtimePanel() {
   const [symbol, setSymbol] = useState('')
@@ -137,6 +137,7 @@ export default function RealtimePanel() {
       {' '}До 20 контрактов по суточному объёму на момент запуска backend.
       {!error && universe?.last_error && ' Соединение восстанавливается автоматически.'}
     </p>
+    {universe?.storage_error && <p className="notice error">Не удалось прочитать или сохранить историю. Текущий поток работает, но сохранение истории требует проверки backend.</p>}
     {!!universe?.symbols.length && <label className="realtime-selector">Монета быстрого потока{' '}
       <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
         {universe.symbols.map((item) => <option key={item} value={item}>{item}</option>)}
@@ -209,7 +210,7 @@ function RealtimeDetails({ symbol, data, error }: { symbol: string; data: Snapsh
           ? `Последнее движение сильнее ${momentum.history.percentile.toLocaleString('ru-RU')}% движений предыдущих 30 минут.`
           : momentum.history.status === 'warming_up' ? 'Накопление истории — требуется чуть больше 30 минут непрерывной работы.'
             : 'Недостаточно данных: есть пропуски в истории или последнем интервале.'}
-      {' '}Равные по величине движения не считаются превышенными. После перезапуска backend история накапливается заново.
+      {' '}Равные по величине движения не считаются превышенными. История сохраняется локально. Паузы в работе остаются пропусками.
     </p>}
     <p className="metric-note">{live && momentum?.status === 'warming_up'
       ? 'Накапливаем историю: требуется около 40 секунд непрерывного потока.'
