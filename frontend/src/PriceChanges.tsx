@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import HourRelativeVolume from './HourRelativeVolume'
 import OpenInterest from './OpenInterest'
 import FundingRate from './FundingRate'
+import RsiPanel from './RsiPanel'
 
 const periods = ['1m', '5m', '15m', '1h', '4h'] as const
 const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '4h': '4 часа' }
@@ -148,6 +149,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
         {data.source_rejected_count > 0 && <p className="notice">Отклонено свечей: {data.source_rejected_count}. Периоды с пропусками не рассчитываются.</p>}
       </>}
       <HourRelativeVolume key={`${symbol}-${revision}`} symbol={symbol} />
+      <RsiPanel key={`rsi-${symbol}-${revision}`} symbol={symbol} />
     </section>
   )
 }

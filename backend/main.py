@@ -16,6 +16,7 @@ from minute_momentum import calculate_minute_momentum
 from realtime import trade_stream
 from open_interest import get_open_interest
 from funding import get_funding
+from rsi import calculate_rsi
 
 
 @asynccontextmanager
@@ -109,6 +110,20 @@ def price_changes(
         "closure_basis": source["closure_basis"],
         **result,
     }
+
+
+@app.get("/api/scanner/rsi")
+def rsi(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+    interval: Literal["15m", "1h"] = "15m",
+) -> dict:
+    source = market_data.get_candles(symbol, interval, 102, True)
+    as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
+    return {"exchange": "bitunix", "symbol": symbol,
+            "as_of": source["as_of"], "fetched_at": source["fetched_at"],
+            "source_quality": source["data_quality"], "source_rejected_count": source["rejected_count"],
+            "closure_basis": source["closure_basis"],
+            **calculate_rsi(source["items"], as_of_ms, interval)}
 
 
 @app.get("/api/scanner/funding")
