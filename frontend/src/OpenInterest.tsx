@@ -9,20 +9,25 @@ type Result = {
 }
 const percent = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 4, signDisplay: 'exceptZero' })
 
-export default function OpenInterest({ symbol }: { symbol: 'BTCUSDT' | 'ETHUSDT' }) {
+export default function OpenInterest({ symbol }: { symbol: string }) {
   const [data, setData] = useState<Result | null>(null)
   const [error, setError] = useState('')
+  const [unavailable, setUnavailable] = useState('')
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     let active = true
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
+    const timeout = setTimeout(() => controller.abort(), 40000)
     const start = setTimeout(async () => {
       try {
         const response = await fetch(`/api/scanner/open-interest?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal, cache: 'no-store' })
         if (!response.ok) throw new Error(`OI Bybit недоступен (HTTP ${response.status}).`)
-        const result: Result = await response.json()
-        if (result.exchange !== 'bybit' || result.symbol !== symbol || result.unit !== (symbol === 'BTCUSDT' ? 'BTC' : 'ETH')
+        const result: Result & { reason?: string } = await response.json()
+        if (result.exchange === 'bybit' && result.symbol === symbol && result.status === 'unavailable' && typeof result.reason === 'string') {
+          if (active) { setUnavailable(result.reason); setData(null) }
+          return
+        }
+        if (result.exchange !== 'bybit' || result.symbol !== symbol || typeof result.unit !== 'string' || !result.unit
           || result.definition !== 'sum_of_both_sides' || !['ok', 'stale'].includes(result.status)
           || !Number.isFinite(Number(result.open_interest)) || Number(result.open_interest) < 0
           || !Number.isFinite(Date.parse(result.measured_at)) || !result.changes
@@ -40,8 +45,9 @@ export default function OpenInterest({ symbol }: { symbol: 'BTCUSDT' | 'ETHUSDT'
   return <div className="momentum-panel">
     <h3>Open Interest · Bybit · {symbol}</h3>
     <p className="metric-note">Объём открытых позиций на Bybit. Это другой рынок, чем цены и объёмы Bitunix выше. Данные с шагом 5 минут; обновление — кнопкой «Обновить расчёты».</p>
-    {!data && !error && <p className="price-reference" role="status">Получаем OI Bybit…</p>}
-    {error && <div className="notice error" role="alert">{error} <button className="refresh" onClick={() => { setData(null); setError(''); setRevision((value) => value + 1) }}>Повторить</button></div>}
+    {!data && !error && !unavailable && <p className="price-reference" role="status">Получаем OI Bybit…</p>}
+    {unavailable && <p className="notice">OI недоступен: {unavailable}</p>}
+    {error && <div className="notice error" role="alert">{error} <button className="refresh" onClick={() => { setData(null); setUnavailable(''); setError(''); setRevision((value) => value + 1) }}>Повторить</button></div>}
     {data && <>
       <p className="price-reference">Последнее измерение: <strong>{Number(data.open_interest).toLocaleString('ru-RU', { maximumFractionDigits: 8 })} {data.unit}</strong> · {new Date(data.measured_at).toLocaleString('ru-RU')} (местное время)</p>
       {data.status === 'stale' && <p className="notice">Bybit вернул устаревшее измерение. Изменения недоступны.</p>}

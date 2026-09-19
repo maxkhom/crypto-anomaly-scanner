@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import HourRelativeVolume from './HourRelativeVolume'
 import OpenInterest from './OpenInterest'
+import FundingRate from './FundingRate'
 
 const periods = ['1m', '5m', '15m', '1h', '4h'] as const
 const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '4h': '4 часа' }
@@ -123,6 +124,10 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
           <p className="metric-note">Положительная разница означает усиление роста или замедление падения; отрицательная — усиление падения или замедление роста. При смене знака доходности оценивайте оба значения. Это не торговый сигнал.</p>
           {data.minute_momentum.warning_count > 0 && <p className="metric-note">Свечей с предупреждением об открытии в расчёте темпа: {data.minute_momentum.warning_count}. Используются проверенные цены закрытия.</p>}
         </div>
+      </>}
+      <OpenInterest key={`oi-${symbol}-${revision}`} symbol={symbol} />
+      <FundingRate key={`funding-${symbol}-${revision}`} symbol={symbol} />
+      {data && <>
         {([{minutes: 5, metric: data.relative_volume}, {minutes: 15, metric: data.relative_volume_15m}]).map(({minutes, metric}) => (
         <div className="rvol-panel" key={minutes}>
           <div>
@@ -142,7 +147,6 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
         {periods.some((period) => data.changes[period].warning_count > 0) && <p className="metric-note">У части свечей открытие вне диапазона. Расчёт выполнен по проверенным ценам закрытия.</p>}
         {data.source_rejected_count > 0 && <p className="notice">Отклонено свечей: {data.source_rejected_count}. Периоды с пропусками не рассчитываются.</p>}
       </>}
-      {(symbol === 'BTCUSDT' || symbol === 'ETHUSDT') ? <OpenInterest key={`oi-${symbol}-${revision}`} symbol={symbol} /> : <p className="metric-note">OI Bybit пока подключён для BTCUSDT и ETHUSDT. Для этой монеты источник пока не подключён.</p>}
       <HourRelativeVolume key={`${symbol}-${revision}`} symbol={symbol} />
     </section>
   )

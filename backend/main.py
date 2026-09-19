@@ -15,6 +15,7 @@ from relative_volume import calculate_relative_volume
 from minute_momentum import calculate_minute_momentum
 from realtime import trade_stream
 from open_interest import get_open_interest
+from funding import get_funding
 
 
 @asynccontextmanager
@@ -110,8 +111,13 @@ def price_changes(
     }
 
 
+@app.get("/api/scanner/funding")
+def funding(symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$")) -> dict:
+    return get_funding(symbol)
+
+
 @app.get("/api/scanner/open-interest")
-def open_interest(symbol: Literal["BTCUSDT", "ETHUSDT"] = "BTCUSDT") -> dict:
+def open_interest(symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$")) -> dict:
     return get_open_interest(symbol)
 
 
