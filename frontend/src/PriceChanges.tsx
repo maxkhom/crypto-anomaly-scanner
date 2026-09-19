@@ -3,6 +3,7 @@ import HourRelativeVolume from './HourRelativeVolume'
 import OpenInterest from './OpenInterest'
 import FundingRate from './FundingRate'
 import RsiPanel from './RsiPanel'
+import VolatilityPanel from './VolatilityPanel'
 
 const periods = ['1m', '5m', '15m', '1h', '4h'] as const
 const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '4h': '4 часа' }
@@ -150,6 +151,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
       </>}
       <HourRelativeVolume key={`${symbol}-${revision}`} symbol={symbol} />
       <RsiPanel key={`rsi-${symbol}-${revision}`} symbol={symbol} />
+      <VolatilityPanel key={`volatility-${symbol}-${revision}`} symbol={symbol} />
     </section>
   )
 }
