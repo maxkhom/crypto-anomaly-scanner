@@ -13,6 +13,54 @@ def history(current='500', baseline='100'):
 
 
 class RelativeVolumeTests(unittest.TestCase):
+    def test_volume_score_counts_windows_not_individual_candles(self):
+        rows = history(current='20')
+        # Twenty windows of five minutes, with mean minute volumes 1..20.
+        for index, row in enumerate(rows[5:]):
+            row['volume_quote'] = str(index // 5 + 1)
+        result = calculate_relative_volume(rows, END)
+        component = result['score_component']
+        self.assertEqual(component['exceeded_windows'], 19)
+        self.assertEqual(component['normalized_score'], 95)
+        self.assertEqual(component['points'], 23.75)
+        self.assertEqual(component['max_points'], 25)
+        self.assertEqual(component['baseline_to'], component['evaluated_from'])
+        self.assertEqual(result['rvol'], round(20 / 10.5, 4))
+
+    def test_volume_score_ties_zero_and_record(self):
+        for current, points in [('100', 0), ('0', 0), ('500', 25)]:
+            with self.subTest(current=current):
+                component = calculate_relative_volume(history(current), END)['score_component']
+                self.assertEqual(component['points'], points)
+                self.assertEqual(component['status'], 'ok')
+
+    def test_volume_score_missing_invalid_and_zero_baseline(self):
+        missing = history()[1:]
+        invalid = history()
+        invalid[8]['volume_quote'] = 'NaN'
+        for rows, status in [(missing, 'insufficient_data'), (invalid, 'invalid_data'),
+                             (history(baseline='0'), 'insufficient_data')]:
+            with self.subTest(status=status):
+                component = calculate_relative_volume(rows, END)['score_component']
+                self.assertIsNone(component['points'])
+                self.assertIsNone(component['normalized_score'])
+                self.assertIsNone(component['exceeded_windows'])
+                self.assertEqual(component['status'], status)
+
+    def test_volume_score_ignores_future_and_is_stable_inside_minute(self):
+        rows = history()
+        before = calculate_relative_volume(rows, END)['score_component']
+        rows.append({'close_time_ms': END + 60000, 'is_closed': False, 'volume_quote': '99999999'})
+        self.assertEqual(before, calculate_relative_volume(rows, END + 59999)['score_component'])
+
+    def test_volume_score_uses_unrounded_values(self):
+        # Both RVOL values round to 1, but the strict rank keeps the difference.
+        low = calculate_relative_volume(history('99.99999'), END)
+        high = calculate_relative_volume(history('100.00001'), END)
+        self.assertEqual(low['rvol'], high['rvol'])
+        self.assertEqual(low['score_component']['points'], 0)
+        self.assertEqual(high['score_component']['points'], 25)
+
     def test_five_times_and_exclusion_of_current_window(self):
         result = calculate_relative_volume(history(), END+30000)
         self.assertEqual(result['rvol'], 5)
@@ -85,6 +133,7 @@ class FifteenMinuteVolumeTests(unittest.TestCase):
         self.assertEqual(result['current_volume_usdt'], '4500')
         self.assertEqual(result['baseline_average_volume_usdt'], '1500')
         self.assertEqual(result['baseline_windows'], 20)
+        self.assertNotIn('score_component', result)
 
     def test_each_side_of_window_boundary_is_required(self):
         for index in (0, 14, 15, 314):
@@ -128,6 +177,7 @@ class HourVolumeTests(unittest.TestCase):
         self.assertEqual(result['rvol'], 2)
         self.assertEqual(result['current_volume_usdt'], '2400')
         self.assertEqual(result['baseline_average_volume_usdt'], '1200')
+        self.assertNotIn('score_component', result)
 
     def test_missing_boundary_or_oldest_candle(self):
         for index in (0, 11, 12, 251):

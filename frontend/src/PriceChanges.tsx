@@ -36,6 +36,10 @@ type Result = {
     warning_count: number
     current_from: string
     current_to: string
+    score_component?: {
+      status: string; normalized_score: number | null
+      points: number | null; max_points: number; reason: string
+    }
   }
 }
 const volumeFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
@@ -136,6 +140,14 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
             <h3>Relative Volume · {minutes} минут</h3>
             <strong className="rvol-value">{metric.status === 'ok' && metric.rvol !== null ? `${rvolFormat.format(metric.rvol)}x` : '—'}</strong>
             <p>1x — средний объём; выше 1x — выше среднего.</p>
+            {minutes === 5 && metric.score_component && <>
+              <h3>Объём · вклад в Score</h3>
+              <strong className="rvol-value">{metric.status === 'ok' && metric.score_component.status === 'ok'
+                && typeof metric.score_component.points === 'number' && Number.isFinite(metric.score_component.points)
+                && metric.score_component.points >= 0 && metric.score_component.points <= 25 && metric.score_component.max_points === 25
+                ? `${rvolFormat.format(metric.score_component.points)} / 25` : '—'}</strong>
+              <p>{metric.score_component.reason}</p>
+            </>}
           </div>
           <div className="rvol-details">
             <p>Последние {minutes} минут: <strong>{metric.current_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(metric.current_volume_usdt))} USDT`}</strong></p>
@@ -143,6 +155,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
             <p>Окно: {new Date(metric.current_from).toLocaleTimeString('ru-RU')}–{new Date(metric.current_to).toLocaleTimeString('ru-RU')} (местное время)</p>
             {metric.status !== 'ok' && <p className="rvol-warning">{metric.reason === 'zero_baseline' ? 'Средний исторический объём равен нулю; RVOL не определён.' : metric.reason === 'missing_candles' ? `Недостаточно данных: отсутствует минут — ${metric.missing_count}.` : 'Некорректные данные объёма.'}</p>}
             {metric.warning_count > 0 && <p className="rvol-warning">Свечей с предупреждением об открытии: {metric.warning_count}. Объёмы прошли проверку.</p>}
+            {minutes === 5 && metric.score_component && <p>Вклад — доля исторических окон с меньшим объёмом × 25. Например, 19 из 20 дают 23,75 балла. Ранг оценивает место в истории, RVOL — отношение к среднему: высокий ранг возможен и при небольшом превышении объёма. Это отдельный компонент, общий Score ещё не готов. Обновление — кнопкой «Обновить расчёты».</p>}
           </div>
         </div>
         ))}
