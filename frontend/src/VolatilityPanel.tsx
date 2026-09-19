@@ -6,6 +6,10 @@ type Result = {
   range_14: string | null; range_14_pct: number | null
   to_time: string; range_from: string; range_to: string
   missing_count: number; warning_count: number; source_rejected_count: number
+  score_component?: {
+    status: string; points: number | null; max_points: number; reason: string
+    baseline_first_at: string; baseline_last_at: string
+  }
 }
 const amount = (value: string) => Number(value).toLocaleString('ru-RU', { maximumSignificantDigits: 6 })
 const percent = (value: number) => value.toLocaleString('ru-RU', { maximumFractionDigits: 6 })
@@ -46,6 +50,15 @@ function VolatilityMetric({ symbol, interval }: { symbol: string; interval: '15m
     <span>ATR(14)</span>
     <strong>{usable ? `${percent(data.atr_pct!)}%` : '—'}</strong>
     {usable && <small>{amount(data.atr!)} USDT</small>}
+    {interval === '15m' && data?.score_component && <>
+      <small>Волатильность · вклад в Score</small>
+      <strong>{usable && data.score_component.status === 'ok'
+        && typeof data.score_component.points === 'number' && Number.isFinite(data.score_component.points)
+        && data.score_component.points >= 0 && data.score_component.points <= 15 && data.score_component.max_points === 15
+        ? `${data.score_component.points.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} / 15` : '—'}</strong>
+      <small>{data.score_component.reason}</small>
+      <small>Прошлые значения ATR%: {date(data.score_component.baseline_first_at)} — {date(data.score_component.baseline_last_at)}.</small>
+    </>}
     <small>Диапазон последних 14 свечей · {interval === '15m' ? '3 ч 30 мин' : '14 часов'}</small>
     <strong>{usable ? `${percent(data.range_14_pct!)}%` : '—'}</strong>
     {usable && <small>{amount(data.range_14!)} USDT · максимум минус минимум</small>}
@@ -69,5 +82,6 @@ export default function VolatilityPanel({ symbol }: { symbol: string }) {
       <VolatilityMetric key={`${symbol}-1h`} symbol={symbol} interval="1h" />
     </div>
     <p className="metric-note">ATR(14) — сглаженный по Уайлдеру диапазон одной свечи с учётом разрыва относительно предыдущего закрытия. История расчёта — 100 завершённых свечей. Проценты ATR и диапазона рассчитаны от последней цены закрытия. Показатели описывают размах колебаний, но не их направление. Обновление — кнопкой «Обновить расчёты».</p>
+    <p className="metric-note">Вклад волатильности использует только ATR% на свечах 15 минут. Каждое историческое значение делится на свою цену закрытия; текущее сравнивается с 20 предыдущими. Превышение 19 из 20 даёт 14,25/15 балла. Соседние значения ATR связаны сглаживанием: это относительный ранг, не вероятность события. Высокий ранг возможен и при небольшом повышении ATR. Общий Score ещё не готов.</p>
   </div>
 }
