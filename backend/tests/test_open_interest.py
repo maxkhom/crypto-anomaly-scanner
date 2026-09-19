@@ -40,3 +40,19 @@ class OITests(unittest.TestCase):
         data['result']['list'].append({'timestamp': str(END), 'openInterest': '200'})
         with self.assertRaises(ValueError):
             calculate_open_interest(data)
+
+
+class SymbolTests(unittest.TestCase):
+    def test_eth_uses_eth_units(self):
+        data = payload()
+        data['result']['symbol'] = 'ETHUSDT'
+        result = calculate_open_interest(data, 'ETHUSDT')
+        self.assertEqual(result['symbol'], 'ETHUSDT')
+        self.assertEqual(result['unit'], 'ETH')
+        self.assertEqual(result['changes']['1h']['percent'], 10)
+
+    def test_wrong_contract_and_unsupported_symbol_rejected(self):
+        with self.assertRaises(ValueError):
+            calculate_open_interest(payload(), 'ETHUSDT')
+        with self.assertRaises(ValueError):
+            calculate_open_interest(payload(), 'SOLUSDT')

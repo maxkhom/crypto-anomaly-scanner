@@ -111,8 +111,8 @@ def price_changes(
 
 
 @app.get("/api/scanner/open-interest")
-def open_interest(symbol: Literal["BTCUSDT"] = "BTCUSDT") -> dict:
-    return get_open_interest()
+def open_interest(symbol: Literal["BTCUSDT", "ETHUSDT"] = "BTCUSDT") -> dict:
+    return get_open_interest(symbol)
 
 
 @app.get("/api/health")

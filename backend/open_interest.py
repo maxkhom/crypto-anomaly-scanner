@@ -1,4 +1,4 @@
-"""Bybit BTCUSDT OI snapshots; values use Bybit's two-sided definition."""
+"""Bybit BTCUSDT and ETHUSDT OI snapshots; values use Bybit's two-sided definition."""
 import json
 from decimal import Decimal
 from urllib.request import urlopen
@@ -6,13 +6,16 @@ from urllib.request import urlopen
 from bitunix import MarketDataError, iso_time
 
 STEP = 300_000
+SUPPORTED_UNITS = {'BTCUSDT': 'BTC', 'ETHUSDT': 'ETH'}
 
 
-def calculate_open_interest(payload):
+def calculate_open_interest(payload, symbol="BTCUSDT"):
+    if symbol not in SUPPORTED_UNITS:
+        raise ValueError("Unsupported OI contract")
     if payload['retCode'] != 0:
         raise ValueError('Bybit rejected the request')
     source = payload['result']
-    if source['symbol'] != 'BTCUSDT' or source['category'] != 'linear':
+    if source['symbol'] != symbol or source['category'] != 'linear':
         raise ValueError('Unexpected Bybit contract')
     now = int(payload['time'])
     if now <= 0:
@@ -39,18 +42,20 @@ def calculate_open_interest(payload):
         changes[label] = {'percent': float(round((current / points[start] - 1) * 100, 4)) if status == 'ok' else None,
                           'status': status, 'missing_count': missing,
                           'from_time': iso_time(start), 'to_time': iso_time(latest)}
-    return {'exchange': 'bybit', 'symbol': 'BTCUSDT', 'category': 'linear', 'unit': 'BTC',
+    return {'exchange': 'bybit', 'symbol': symbol, 'category': 'linear', 'unit': SUPPORTED_UNITS[symbol],
             'definition': 'sum_of_both_sides', 'source_field': 'openInterest',
             'open_interest': str(current), 'status': 'stale' if stale else 'ok',
             'measured_at': iso_time(latest), 'source_server_time': iso_time(now),
             'age_seconds': round((now - latest) / 1000, 3), 'interval': '5min', 'changes': changes}
 
 
-def get_open_interest():
-    url = 'https://api.bybit.com/v5/market/open-interest?category=linear&symbol=BTCUSDT&intervalTime=5min&limit=13'
+def get_open_interest(symbol="BTCUSDT"):
+    if symbol not in SUPPORTED_UNITS:
+        raise ValueError("Unsupported OI contract")
+    url = f'https://api.bybit.com/v5/market/open-interest?category=linear&symbol={symbol}&intervalTime=5min&limit=13'
     try:
         with urlopen(url, timeout=10) as response:
             payload = json.load(response)
-        return calculate_open_interest(payload)
+        return calculate_open_interest(payload, symbol)
     except (OSError, ValueError, KeyError, TypeError, ArithmeticError) as exc:
         raise MarketDataError('Не удалось получить корректную историю OI Bybit') from exc

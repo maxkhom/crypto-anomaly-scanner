@@ -142,7 +142,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
         {periods.some((period) => data.changes[period].warning_count > 0) && <p className="metric-note">У части свечей открытие вне диапазона. Расчёт выполнен по проверенным ценам закрытия.</p>}
         {data.source_rejected_count > 0 && <p className="notice">Отклонено свечей: {data.source_rejected_count}. Периоды с пропусками не рассчитываются.</p>}
       </>}
-      {symbol === 'BTCUSDT' ? <OpenInterest key={`oi-${symbol}-${revision}`} /> : <p className="metric-note">OI Bybit пока подключён только для BTCUSDT.</p>}
+      {(symbol === 'BTCUSDT' || symbol === 'ETHUSDT') ? <OpenInterest key={`oi-${symbol}-${revision}`} symbol={symbol} /> : <p className="metric-note">OI Bybit пока подключён для BTCUSDT и ETHUSDT. Для этой монеты источник пока не подключён.</p>}
       <HourRelativeVolume key={`${symbol}-${revision}`} symbol={symbol} />
     </section>
   )
