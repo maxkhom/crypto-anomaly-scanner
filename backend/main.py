@@ -14,6 +14,7 @@ from price_changes import calculate_price_changes
 from relative_volume import calculate_relative_volume
 from minute_momentum import calculate_minute_momentum
 from realtime import trade_stream
+from open_interest import get_open_interest
 
 
 @asynccontextmanager
@@ -107,6 +108,11 @@ def price_changes(
         "closure_basis": source["closure_basis"],
         **result,
     }
+
+
+@app.get("/api/scanner/open-interest")
+def open_interest(symbol: Literal["BTCUSDT"] = "BTCUSDT") -> dict:
+    return get_open_interest()
 
 
 @app.get("/api/health")
