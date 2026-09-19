@@ -1,5 +1,6 @@
 """A shared public trade connection owned by the application lifecycle."""
 import asyncio
+import os
 import json
 import logging
 import time
@@ -257,4 +258,4 @@ class TradeStream:
 
 
 trade_stream = TradeStream(symbols=(), auto_select=True,
-                           store=HistoryStore(Path(__file__).resolve().parent / "data" / "scanner.sqlite3"))
+                           store=HistoryStore(Path(os.environ.get("DATA_DIR") or os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or (Path(__file__).resolve().parent / "data")) / "scanner.sqlite3"))

@@ -1,4 +1,6 @@
 import asyncio
+import os
+from pathlib import Path
 import sqlite3
 from contextlib import asynccontextmanager, suppress
 from decimal import Decimal, InvalidOperation
@@ -7,6 +9,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from bitunix import InstrumentNotFound, MarketDataError, market_data
 from market import get_market
@@ -17,6 +20,7 @@ from realtime import trade_stream
 from open_interest import get_open_interest
 from funding import get_funding
 from rsi import calculate_rsi
+from volatility import calculate_volatility
 
 
 @asynccontextmanager
@@ -112,6 +116,20 @@ def price_changes(
     }
 
 
+@app.get("/api/scanner/volatility")
+def volatility(
+    symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+    interval: Literal["15m", "1h"] = "15m",
+) -> dict:
+    source = market_data.get_candles(symbol, interval, 102, True)
+    as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
+    return {"exchange": "bitunix", "symbol": symbol,
+            "as_of": source["as_of"], "fetched_at": source["fetched_at"],
+            "source_quality": source["data_quality"], "source_rejected_count": source["rejected_count"],
+            "closure_basis": source["closure_basis"],
+            **calculate_volatility(source["items"], as_of_ms, interval)}
+
+
 @app.get("/api/scanner/rsi")
 def rsi(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
@@ -205,3 +223,9 @@ def market_ticker() -> dict[str, str | float]:
         }
     except (ValueError, KeyError, IndexError, TypeError, InvalidOperation) as exc:
         raise HTTPException(502, "Bitunix вернул некорректные рыночные данные") from exc
+
+
+# API routes take precedence; only compiled frontend assets are exposed.
+frontend_dist = Path(os.environ.get("FRONTEND_DIST") or Path(__file__).resolve().parent.parent / "frontend" / "dist")
+if frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
