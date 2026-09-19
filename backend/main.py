@@ -136,11 +136,12 @@ def scanner_metrics(
 @app.get("/api/scanner/relative-volume")
 def relative_volume(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
-    period: Literal["5m", "15m"] = "5m",
+    period: Literal["5m", "15m", "1h"] = "5m",
 ) -> dict:
-    # Two extra rows allow for the current minute and predecessor validation.
-    window_minutes = 5 if period == "5m" else 15
-    source = market_data.get_candles(symbol, "1m", window_minutes * 21 + 2, True)
+    # Two extra rows cover the unfinished candle and predecessor validation.
+    window_minutes = {"5m": 5, "15m": 15, "1h": 60}[period]
+    candle_minutes = 5 if period == "1h" else 1
+    source = market_data.get_candles(symbol, f"{candle_minutes}m", window_minutes // candle_minutes * 21 + 2, True)
     as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
     return {
         "exchange": "bitunix", "symbol": symbol,
@@ -148,7 +149,7 @@ def relative_volume(
         "source_quality": source["data_quality"],
         "source_rejected_count": source["rejected_count"],
         "closure_basis": source["closure_basis"],
-        **calculate_relative_volume(source["items"], as_of_ms, window_minutes),
+        **calculate_relative_volume(source["items"], as_of_ms, window_minutes, candle_minutes),
     }
 
 

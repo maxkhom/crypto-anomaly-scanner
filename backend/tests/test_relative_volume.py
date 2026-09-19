@@ -113,3 +113,41 @@ class FifteenMinuteVolumeTests(unittest.TestCase):
     def test_unsupported_period_rejected(self):
         with self.assertRaises(ValueError):
             calculate_relative_volume([], END, 10)
+
+
+class HourVolumeTests(unittest.TestCase):
+    def rows(self):
+        end = END // 300000 * 300000
+        return [{'close_time_ms': end - i * 300000, 'is_closed': True,
+                 'volume_quote': '200' if i < 12 else '100'} for i in range(252)]
+
+    def test_hour_ratio_excludes_current_twelve_candles(self):
+        result = calculate_relative_volume(self.rows(), END, 60, 5)
+        self.assertEqual(result['period'], '1h')
+        self.assertEqual(result['candle_interval'], '5m')
+        self.assertEqual(result['rvol'], 2)
+        self.assertEqual(result['current_volume_usdt'], '2400')
+        self.assertEqual(result['baseline_average_volume_usdt'], '1200')
+
+    def test_missing_boundary_or_oldest_candle(self):
+        for index in (0, 11, 12, 251):
+            rows = self.rows()
+            rows.pop(index)
+            result = calculate_relative_volume(rows, END, 60, 5)
+            self.assertIsNone(result['rvol'])
+            self.assertEqual(result['missing_count'], 1)
+
+    def test_end_is_aligned_to_five_minutes(self):
+        end = END // 300000 * 300000
+        self.assertEqual(calculate_relative_volume(self.rows(), end, 60, 5),
+                         calculate_relative_volume(self.rows(), end + 299999, 60, 5))
+        self.assertEqual(calculate_relative_volume(self.rows(), end + 300000, 60, 5)['missing_count'], 1)
+
+    def test_zero_baseline_and_unclosed_candle(self):
+        rows = self.rows()
+        rows[0]['is_closed'] = False
+        self.assertEqual(calculate_relative_volume(rows, END, 60, 5)['missing_count'], 1)
+        rows = self.rows()
+        for row in rows[12:]:
+            row['volume_quote'] = '0'
+        self.assertEqual(calculate_relative_volume(rows, END, 60, 5)['reason'], 'zero_baseline')

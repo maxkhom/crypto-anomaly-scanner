@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import HourRelativeVolume from './HourRelativeVolume'
 
 const periods = ['1m', '5m', '15m', '1h', '4h'] as const
 const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '4h': '4 часа' }
@@ -82,7 +83,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
   return (
     <section className="panel price-panel" aria-label={`Изменения цены ${symbol}`} aria-busy={loading}>
       <div className="toolbar">
-        <div><h2>{symbol} · Цена и объём</h2><p>По завершённым минутным свечам</p></div>
+        <div><h2>{symbol} · Цена и объём</h2><p>По завершённым свечам</p></div>
         <div className="controls">
           <button className="refresh" disabled={loading} onClick={refresh}>{loading ? 'Загрузка…' : 'Обновить расчёты'}</button>
           <button className="close-panel" onClick={onClose} aria-label="Закрыть панель монеты">×</button>
@@ -140,6 +141,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
         {periods.some((period) => data.changes[period].warning_count > 0) && <p className="metric-note">У части свечей открытие вне диапазона. Расчёт выполнен по проверенным ценам закрытия.</p>}
         {data.source_rejected_count > 0 && <p className="notice">Отклонено свечей: {data.source_rejected_count}. Периоды с пропусками не рассчитываются.</p>}
       </>}
+      <HourRelativeVolume key={`${symbol}-${revision}`} symbol={symbol} />
     </section>
   )
 }
