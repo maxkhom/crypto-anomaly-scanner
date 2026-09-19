@@ -10,6 +10,27 @@ def payload():
 
 
 class OITests(unittest.TestCase):
+    def test_source_http_error_survives_service_boundary(self):
+        from unittest.mock import patch
+        from urllib.error import HTTPError
+        from open_interest import get_open_interest
+        from bitunix import MarketDataError
+        with patch('open_interest.market_data.get_active_usdt_futures', return_value=[{'symbol': 'BTCUSDT', 'base': 'BTC'}]), patch('open_interest.urlopen', side_effect=HTTPError('https://api.bybit.com', 403, 'Forbidden', {}, None)), self.assertLogs('open_interest', level='WARNING'):
+            with self.assertRaisesRegex(MarketDataError, 'HTTP 403.*instruments-info'):
+                get_open_interest('BTCUSDT')
+
+    def test_api_rejection_and_connection_error(self):
+        from unittest.mock import patch
+        from urllib.error import URLError
+        from open_interest import bybit_request
+        from bitunix import MarketDataError
+        with patch('open_interest.urlopen'), patch('open_interest.json.load', return_value={'retCode': 10006}):
+            with self.assertRaisesRegex(MarketDataError, 'retCode=10006'):
+                bybit_request('open-interest')
+        with patch('open_interest.urlopen', side_effect=URLError('connection failed')):
+            with self.assertRaisesRegex(MarketDataError, 'ошибка соединения'):
+                bybit_request('open-interest')
+
     def test_all_periods_and_units(self):
         result = calculate_open_interest(payload())
         self.assertEqual(result['unit'], 'BTC')

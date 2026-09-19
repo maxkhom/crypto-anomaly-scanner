@@ -1,6 +1,8 @@
 """Bybit BTCUSDT and ETHUSDT OI snapshots; values use Bybit's two-sided definition."""
 import json
+import logging
 import re
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from decimal import Decimal
 from urllib.request import urlopen
@@ -8,6 +10,7 @@ from urllib.request import urlopen
 from bitunix import MarketDataError, iso_time, market_data
 
 STEP = 300_000
+logger = logging.getLogger(__name__)
 SUPPORTED_UNITS = {'BTCUSDT': 'BTC', 'ETHUSDT': 'ETH'}
 
 
@@ -54,10 +57,18 @@ def calculate_open_interest(payload, symbol="BTCUSDT", unit=None):
 
 def bybit_request(endpoint, **params):
     url = 'https://api.bybit.com/v5/market/' + endpoint + '?' + urlencode(params)
-    with urlopen(url, timeout=10) as response:
-        payload = json.load(response)
+    try:
+        with urlopen(url, timeout=10) as response:
+            payload = json.load(response)
+    except HTTPError as exc:
+        raise MarketDataError(f'Bybit: HTTP {exc.code} при запросе {endpoint}.') from exc
+    except (URLError, TimeoutError) as exc:
+        raise MarketDataError(f'Bybit: ошибка соединения или тайм-аут при запросе {endpoint}.') from exc
     if payload['retCode'] != 0:
-        raise ValueError('Bybit rejected the request')
+        code = payload['retCode']
+        if not isinstance(code, int):
+            raise ValueError('Invalid Bybit return code')
+        raise MarketDataError(f'Bybit отклонил запрос {endpoint}: retCode={code}.')
     return payload
 
 
@@ -86,17 +97,24 @@ def get_open_interest(symbol="BTCUSDT"):
         raise ValueError('Invalid symbol')
     unavailable = {'exchange': 'bybit', 'symbol': symbol, 'status': 'unavailable',
                    'reason': 'Нет подтверждённого соответствующего активного USDT perpetual-контракта Bybit.'}
+    stage = 'список контрактов Bitunix'
     try:
         instrument = next((row for row in market_data.get_active_usdt_futures() if row['symbol'] == symbol), None)
         if instrument is None:
             return unavailable
+        stage = 'сопоставление контракта Bybit'
         metadata = bybit_request('instruments-info', category='linear', symbol=symbol)
         unit = match_contract(metadata, symbol, instrument['base'])
         if unit is None:
             return unavailable
+        stage = 'история OI Bybit'
         payload = bybit_request('open-interest', category='linear', symbol=symbol, intervalTime='5min', limit=13)
         if not payload['result']['list']:
             return {**unavailable, 'reason': 'Bybit пока не вернул историю OI для этого контракта.'}
         return calculate_open_interest(payload, symbol, unit)
+    except MarketDataError:
+        logger.warning('OI source failed: symbol=%s; stage=%s', symbol, stage, exc_info=True)
+        raise
     except (OSError, ValueError, KeyError, TypeError, ArithmeticError) as exc:
-        raise MarketDataError('Не удалось получить корректную историю OI Bybit') from exc
+        logger.warning('OI validation failed: symbol=%s; stage=%s', symbol, stage, exc_info=True)
+        raise MarketDataError(f'Некорректные данные OI; этап: {stage}. Подробности в логах сервера.') from exc
