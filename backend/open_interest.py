@@ -8,10 +8,39 @@ from decimal import Decimal
 from urllib.request import urlopen
 
 from bitunix import MarketDataError, iso_time, market_data
+from anomaly_score import calculate_anomaly_score
 
 STEP = 300_000
 logger = logging.getLogger(__name__)
 SUPPORTED_UNITS = {'BTCUSDT': 'BTC', 'ETHUSDT': 'ETH'}
+SCORE_WINDOWS = 20
+
+
+def _oi_score(points, latest, stale):
+    times = list(range(latest - (SCORE_WINDOWS + 1) * STEP, latest + 1, STEP))
+    missing = sum(stamp not in points for stamp in times)
+    score = None
+    exceeded = None
+    if stale:
+        status, reason = 'stale', 'Последнее измерение OI устарело.'
+    elif missing:
+        status, reason = 'insufficient_data', f'Для оценки OI отсутствует измерений: {missing}.'
+    elif any(points[stamp] == 0 for stamp in times[:-1]):
+        status, reason = 'insufficient_data', 'Нельзя рассчитать процентное изменение OI от нулевого значения.'
+    else:
+        changes = [(points[right] / points[left] - 1) * 100 for left, right in zip(times, times[1:])]
+        exceeded = sum(abs(value) < abs(changes[-1]) for value in changes[:-1])
+        score = 100 * exceeded / SCORE_WINDOWS
+        status = 'ok'
+        reason = f'Модуль изменения OI за 5 минут больше {exceeded} из 20 предыдущих изменений. Равные значения не считаются превышенными.'
+    component = calculate_anomaly_score({'open_interest': {
+        'status': status, 'score': score, 'reason': reason,
+    }})['components']['open_interest']
+    return {**component, 'version': 'oi_change_rank_5m_v1', 'exchange': 'bybit',
+            'exceeded_windows': exceeded, 'required_windows': SCORE_WINDOWS,
+            'missing_snapshots': missing, 'evaluated_from': iso_time(latest - STEP),
+            'evaluated_to': iso_time(latest), 'baseline_from': iso_time(times[0]),
+            'baseline_to': iso_time(latest - STEP)}
 
 
 def calculate_open_interest(payload, symbol="BTCUSDT", unit=None):
@@ -52,7 +81,8 @@ def calculate_open_interest(payload, symbol="BTCUSDT", unit=None):
             'definition': 'sum_of_both_sides', 'source_field': 'openInterest',
             'open_interest': str(current), 'status': 'stale' if stale else 'ok',
             'measured_at': iso_time(latest), 'source_server_time': iso_time(now),
-            'age_seconds': round((now - latest) / 1000, 3), 'interval': '5min', 'changes': changes}
+            'age_seconds': round((now - latest) / 1000, 3), 'interval': '5min', 'changes': changes,
+            'score_component': _oi_score(points, latest, stale)}
 
 
 def bybit_request(endpoint, **params):
@@ -108,7 +138,7 @@ def get_open_interest(symbol="BTCUSDT"):
         if unit is None:
             return unavailable
         stage = 'история OI Bybit'
-        payload = bybit_request('open-interest', category='linear', symbol=symbol, intervalTime='5min', limit=13)
+        payload = bybit_request('open-interest', category='linear', symbol=symbol, intervalTime='5min', limit=SCORE_WINDOWS + 2)
         if not payload['result']['list']:
             return {**unavailable, 'reason': 'Bybit пока не вернул историю OI для этого контракта.'}
         return calculate_open_interest(payload, symbol, unit)

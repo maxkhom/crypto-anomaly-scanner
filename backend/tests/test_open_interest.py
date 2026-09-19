@@ -79,6 +79,69 @@ class SymbolTests(unittest.TestCase):
             calculate_open_interest(payload(), 'SOLUSDT')
 
 
+class OIScoreTests(unittest.TestCase):
+    def data(self, final='110'):
+        data = payload()
+        data['result']['list'] = [{'timestamp': str(END - n * STEP),
+                                  'openInterest': final if n == 0 else '100'} for n in range(22)]
+        return data
+
+    def test_growth_decline_ties_and_current_exclusion(self):
+        for final, points in [('110', 25), ('90', 25), ('100', 0), ('0', 25)]:
+            with self.subTest(final=final):
+                result = calculate_open_interest(self.data(final))['score_component']
+                self.assertEqual(result['points'], points)
+                self.assertEqual(result['status'], 'ok')
+                self.assertEqual(result['baseline_to'], result['evaluated_from'])
+
+    def test_rank_and_weighted_points(self):
+        data = self.data()
+        # One historical 10% rise and its correction exceed the current 5% rise.
+        data['result']['list'][10]['openInterest'] = '110'
+        data['result']['list'][0]['openInterest'] = '105'
+        score = calculate_open_interest(data)['score_component']
+        self.assertEqual(score['exceeded_windows'], 18)
+        self.assertEqual(score['normalized_score'], 90)
+        self.assertEqual(score['points'], 22.5)
+
+    def test_older_gap_blocks_score_but_keeps_short_changes(self):
+        data = self.data()
+        data['result']['list'].pop(20)
+        result = calculate_open_interest(data)
+        self.assertEqual(result['changes']['1h']['status'], 'ok')
+        self.assertEqual(result['score_component']['missing_snapshots'], 1)
+        self.assertIsNone(result['score_component']['points'])
+        self.assertEqual(result['score_component']['status'], 'insufficient_data')
+
+    def test_zero_denominator_and_stale_data_block_score(self):
+        for index in (1, 10, 21):
+            data = self.data()
+            data['result']['list'][index]['openInterest'] = '0'
+            self.assertIsNone(calculate_open_interest(data)['score_component']['points'])
+        data = self.data()
+        data['time'] = END + STEP * 2 + 1
+        score = calculate_open_interest(data)['score_component']
+        self.assertIsNone(score['points'])
+        self.assertEqual(score['status'], 'stale')
+
+    def test_short_history_and_input_order(self):
+        self.assertIsNone(calculate_open_interest(payload())['score_component']['points'])
+        data = self.data()
+        before = calculate_open_interest(data)['score_component']
+        data['result']['list'].reverse()
+        data['result']['list'].append({'timestamp': str(END - 22 * STEP), 'openInterest': '999999'})
+        self.assertEqual(before, calculate_open_interest(data)['score_component'])
+
+    def test_service_fetches_enough_history_in_one_request(self):
+        from unittest.mock import patch
+        from open_interest import get_open_interest
+        metadata = ContractMatchTests().metadata(symbol='BTCUSDT', baseCoin='BTC')
+        with patch('open_interest.market_data.get_active_usdt_futures', return_value=[{'symbol': 'BTCUSDT', 'base': 'BTC'}]), patch('open_interest.bybit_request', side_effect=[metadata, self.data()]) as request:
+            self.assertEqual(get_open_interest()['score_component']['points'], 25)
+            self.assertEqual(request.call_count, 2)
+            self.assertEqual(request.call_args.kwargs['limit'], 22)
+
+
 class ContractMatchTests(unittest.TestCase):
     def metadata(self, **changes):
         return {'result': {'category': 'linear', 'list': [{

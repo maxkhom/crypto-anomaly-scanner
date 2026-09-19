@@ -6,6 +6,10 @@ type Result = {
   exchange: string; symbol: string; unit: string; definition: string
   open_interest: string; status: string; measured_at: string
   changes: Record<typeof periods[number], { percent: number | null; status: string; from_time: string; to_time: string }>
+  score_component?: {
+    status: string; points: number | null; max_points: number; reason: string
+    baseline_from: string; baseline_to: string
+  }
 }
 const percent = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 4, signDisplay: 'exceptZero' })
 
@@ -60,7 +64,16 @@ export default function OpenInterest({ symbol }: { symbol: string }) {
             {value === null && <small>{metric.status === 'zero_baseline' ? 'Начальное значение OI равно нулю' : 'Недостаточно актуальных данных'}</small>}
           </div>
         })}
+        {data.score_component && <div className="metric">
+          <span>OI · вклад в Score</span>
+          <strong>{data.status === 'ok' && data.score_component.status === 'ok'
+            && typeof data.score_component.points === 'number' && Number.isFinite(data.score_component.points)
+            && data.score_component.points >= 0 && data.score_component.points <= 25 && data.score_component.max_points === 25
+            ? `${data.score_component.points.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} / 25` : '—'}</strong>
+          <small>{data.score_component.reason}</small>
+        </div>}
       </div>
+      {data.score_component && <p className="metric-note">Сравнение с 20 предыдущими пятиминутными изменениями OI по модулю. Если текущее изменение сильнее 19 из 20, вклад составляет 23,75/25. Рост и сокращение OI оцениваются одинаково; направление видно в колонке «Изменение OI · 5 минут». Высокий ранг не означает большое изменение в процентах. Это компонент будущего общего Score.</p>}
       <p className="metric-note">Используется сумма обеих сторон по определению Bybit. Рост OI означает увеличение открытого интереса, но сам по себе не определяет направление цены.</p>
     </>}
   </div>
