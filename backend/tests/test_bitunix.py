@@ -38,10 +38,22 @@ class CandleTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(MarketDataError):
                 normalize_candles([{**CANDLES[0], **changes}], '1m', AS_OF)
 
-    def test_swapped_volume_units_are_rejected(self):
+    def test_both_observed_volume_layouts_normalize_identically(self):
         row = {**CANDLES[0], 'quoteVol': CANDLES[0]['baseVol'], 'baseVol': CANDLES[0]['quoteVol']}
-        with self.assertRaises(MarketDataError):
-            normalize_candles([row], '1m', AS_OF)
+        self.assertEqual(normalize_candles([row], '1m', AS_OF), normalize_candles([CANDLES[0]], '1m', AS_OF))
+
+    def test_current_reported_layout(self):
+        row = {'open':'81794.5', 'high':'81794.6', 'low':'81794.4', 'close':'81794.5',
+               'quoteVol':'430394.2337', 'baseVol':'5.2619', 'time':'1789836780000'}
+        result = normalize_candles([row], '1m', 1789836843686)[0]
+        self.assertEqual(result['volume_base'], '5.2619')
+        self.assertEqual(result['volume_quote'], '430394.2337')
+
+    def test_inconsistent_and_ambiguous_units_rejected(self):
+        for changes in ({'baseVol':'5', 'quoteVol':'10'},
+                        {'open':'1', 'high':'1.01', 'low':'0.99', 'close':'1', 'baseVol':'100', 'quoteVol':'100.1'}):
+            with self.assertRaises(MarketDataError):
+                normalize_candles([{**CANDLES[0], **changes}], '1m', AS_OF)
 
     def test_duplicate_policy(self):
         self.assertEqual(len(normalize_candles([CANDLES[0], CANDLES[0]], '1m', AS_OF)), 1)

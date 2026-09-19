@@ -20,6 +20,7 @@ type Result = {
     status: string
     warning_count: number
   }
+  relative_volume_15m: Result['relative_volume']
   relative_volume: {
     rvol: number | null
     status: string
@@ -54,7 +55,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
         const response = await fetch(`/api/scanner/metrics?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal })
         if (!response.ok) throw new Error(`Не удалось получить расчёты (HTTP ${response.status}). Повторите запрос.`)
         const result: Result = await response.json()
-        if (!result.minute_momentum || !Array.isArray(result.minute_momentum.minutes) || result.minute_momentum.minutes.length !== 3 || result.symbol !== symbol || !result.relative_volume || (result.relative_volume.rvol !== null && !Number.isFinite(result.relative_volume.rvol)) || !Number.isFinite(Date.parse(result.reference_time)) || !result.changes || periods.some((period) => {
+        if (!result.minute_momentum || !Array.isArray(result.minute_momentum.minutes) || result.minute_momentum.minutes.length !== 3 || result.symbol !== symbol || !result.relative_volume_15m || (result.relative_volume_15m.rvol !== null && !Number.isFinite(result.relative_volume_15m.rvol)) || !result.relative_volume || (result.relative_volume.rvol !== null && !Number.isFinite(result.relative_volume.rvol)) || !Number.isFinite(Date.parse(result.reference_time)) || !result.changes || periods.some((period) => {
           const metric = result.changes[period]
           return !metric || (metric.percent !== null && !Number.isFinite(metric.percent))
         })) throw new Error('Неожиданный формат ответа сервера.')
@@ -120,20 +121,22 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
           <p className="metric-note">Положительная разница означает усиление роста или замедление падения; отрицательная — усиление падения или замедление роста. При смене знака доходности оценивайте оба значения. Это не торговый сигнал.</p>
           {data.minute_momentum.warning_count > 0 && <p className="metric-note">Свечей с предупреждением об открытии в расчёте темпа: {data.minute_momentum.warning_count}. Используются проверенные цены закрытия.</p>}
         </div>
-        <div className="rvol-panel">
+        {([{minutes: 5, metric: data.relative_volume}, {minutes: 15, metric: data.relative_volume_15m}]).map(({minutes, metric}) => (
+        <div className="rvol-panel" key={minutes}>
           <div>
-            <h3>Relative Volume · 5 минут</h3>
-            <strong className="rvol-value">{data.relative_volume.status === 'ok' && data.relative_volume.rvol !== null ? `${rvolFormat.format(data.relative_volume.rvol)}x` : '—'}</strong>
+            <h3>Relative Volume · {minutes} минут</h3>
+            <strong className="rvol-value">{metric.status === 'ok' && metric.rvol !== null ? `${rvolFormat.format(metric.rvol)}x` : '—'}</strong>
             <p>1x — средний объём; выше 1x — выше среднего.</p>
           </div>
           <div className="rvol-details">
-            <p>Последние 5 минут: <strong>{data.relative_volume.current_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(data.relative_volume.current_volume_usdt))} USDT`}</strong></p>
-            <p>Среднее предыдущих 20 окон: <strong>{data.relative_volume.baseline_average_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(data.relative_volume.baseline_average_volume_usdt))} USDT`}</strong></p>
-            <p>Окно: {new Date(data.relative_volume.current_from).toLocaleTimeString('ru-RU')}–{new Date(data.relative_volume.current_to).toLocaleTimeString('ru-RU')} (местное время)</p>
-            {data.relative_volume.status !== 'ok' && <p className="rvol-warning">{data.relative_volume.reason === 'zero_baseline' ? 'Средний исторический объём равен нулю; RVOL не определён.' : data.relative_volume.reason === 'missing_candles' ? `Недостаточно данных: отсутствует минут — ${data.relative_volume.missing_count}.` : 'Некорректные данные объёма.'}</p>}
-            {data.relative_volume.warning_count > 0 && <p className="rvol-warning">Свечей с предупреждением об открытии: {data.relative_volume.warning_count}. Объёмы прошли проверку.</p>}
+            <p>Последние {minutes} минут: <strong>{metric.current_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(metric.current_volume_usdt))} USDT`}</strong></p>
+            <p>Среднее предыдущих 20 окон: <strong>{metric.baseline_average_volume_usdt === null ? 'нет данных' : `${volumeFormat.format(Number(metric.baseline_average_volume_usdt))} USDT`}</strong></p>
+            <p>Окно: {new Date(metric.current_from).toLocaleTimeString('ru-RU')}–{new Date(metric.current_to).toLocaleTimeString('ru-RU')} (местное время)</p>
+            {metric.status !== 'ok' && <p className="rvol-warning">{metric.reason === 'zero_baseline' ? 'Средний исторический объём равен нулю; RVOL не определён.' : metric.reason === 'missing_candles' ? `Недостаточно данных: отсутствует минут — ${metric.missing_count}.` : 'Некорректные данные объёма.'}</p>}
+            {metric.warning_count > 0 && <p className="rvol-warning">Свечей с предупреждением об открытии: {metric.warning_count}. Объёмы прошли проверку.</p>}
           </div>
         </div>
+        ))}
         {periods.some((period) => data.changes[period].warning_count > 0) && <p className="metric-note">У части свечей открытие вне диапазона. Расчёт выполнен по проверенным ценам закрытия.</p>}
         {data.source_rejected_count > 0 && <p className="notice">Отклонено свечей: {data.source_rejected_count}. Периоды с пропусками не рассчитываются.</p>}
       </>}

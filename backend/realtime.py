@@ -5,6 +5,7 @@ import logging
 import time
 from pathlib import Path
 from history_store import HistoryStore
+from anomaly_events import detect_event
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -71,6 +72,9 @@ class TradeStream:
         self.store = store
         self.history_loaded = False
         self.storage_error = None
+        self.event_storage_error = None
+        self.pending_events = {}
+        self.recorded_intervals = {}
         self.auto_select = auto_select
         self.selected_at = None
         self.states = {symbol: TradeState(symbol) for symbol in symbols}
@@ -113,13 +117,40 @@ class TradeStream:
             self.storage_error = str(exc)
             logger.warning("Cannot save price history: %s", exc)
 
+    async def record_events(self):
+        if not self.store or not self.history_loaded:
+            return
+        now, monotonic_now = time.time(), time.monotonic()
+        for symbol, state in self.states.items():
+            live = self.connected and state.last_received is not None and monotonic_now - state.last_received <= 15
+            event = detect_event(symbol, state.momentum, now, live,
+                                 state.last_trade['price'] if state.last_trade else None)
+            if event and self.recorded_intervals.get(symbol) != event['interval_end']:
+                self.pending_events.setdefault((symbol, event['interval_end']), event)
+        try:
+            events = list(self.pending_events.values())
+            if events:
+                await asyncio.to_thread(self.store.save_events, events)
+                for event in events:
+                    self.recorded_intervals[event['symbol']] = event['interval_end']
+                self.pending_events.clear()
+            self.event_storage_error = None
+        except Exception as exc:
+            self.event_storage_error = str(exc)
+            logger.warning('Cannot save anomaly events: %s', exc)
+
     async def persist_history(self, stop):
+        next_save = 0
         while not stop.is_set():
-            await self.save_history()
+            await self.record_events()
+            if time.monotonic() >= next_save:
+                await self.save_history()
+                next_save = time.monotonic() + 10
             try:
-                await asyncio.wait_for(stop.wait(), timeout=10)
+                await asyncio.wait_for(stop.wait(), timeout=1)
             except TimeoutError:
                 pass
+        await self.record_events()
         await self.save_history()
 
     def select_symbols(self, market):
@@ -138,7 +169,7 @@ class TradeStream:
                 "live_count": sum(item["status"] == "live" for item in items),
                 "connected": self.connected, "selected_at": self.selected_at,
                 "selection": "top_20_by_24h_quote_volume_at_startup",
-                "last_error": self.last_error, "storage_error": self.storage_error,
+                "last_error": self.last_error, "storage_error": self.storage_error or self.event_storage_error,
                 **({"items": items} if include_items else {})}
 
     def snapshot(self, symbol="BTCUSDT"):

@@ -1,5 +1,6 @@
 """Versioned local receipt-price history; no trades or credentials are stored."""
 import sqlite3
+import json
 from pathlib import Path
 from decimal import Decimal
 
@@ -14,6 +15,10 @@ class HistoryStore:
         conn.execute('''CREATE TABLE IF NOT EXISTS receipt_boundaries_v1 (
             symbol TEXT NOT NULL, boundary INTEGER NOT NULL, price TEXT,
             started REAL NOT NULL, PRIMARY KEY(symbol, boundary))''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS anomaly_events_v1 (
+            id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, interval_end TEXT NOT NULL,
+            rule_version TEXT NOT NULL, payload TEXT NOT NULL,
+            UNIQUE(symbol, interval_end, rule_version))''')
         return conn
 
     def save(self, snapshots, now):
@@ -44,5 +49,25 @@ class HistoryStore:
                 item = result.setdefault(symbol, {"started": started, "rows": []})
                 item["rows"].append((stamp, value))
             return result
+        finally:
+            conn.close()
+
+    def save_events(self, events):
+        if not events:
+            return
+        conn = self.connection()
+        try:
+            with conn:
+                conn.executemany('INSERT OR IGNORE INTO anomaly_events_v1 (symbol, interval_end, rule_version, payload) VALUES (?, ?, ?, ?)',
+                    [(event['symbol'], event['interval_end'], event['rule_version'], json.dumps(event)) for event in events])
+        finally:
+            conn.close()
+
+    def list_events(self, limit=50):
+        conn = self.connection()
+        try:
+            total = conn.execute('SELECT COUNT(*) FROM anomaly_events_v1').fetchone()[0]
+            rows = conn.execute('SELECT id, payload FROM anomaly_events_v1 ORDER BY interval_end DESC, id DESC LIMIT ?', (limit,)).fetchall()
+            return {'total': total, 'count': len(rows), 'items': [dict(json.loads(payload), id=identifier) for identifier, payload in rows]}
         finally:
             conn.close()

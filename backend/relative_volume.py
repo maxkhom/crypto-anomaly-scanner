@@ -1,4 +1,4 @@
-"""Five-minute quote volume relative to twenty preceding five-minute windows."""
+"""Quote volume relative to twenty preceding windows of the same length."""
 
 from decimal import Decimal, InvalidOperation
 
@@ -10,10 +10,13 @@ BASELINE_WINDOWS = 20
 REQUIRED_MINUTES = WINDOW_MINUTES * (BASELINE_WINDOWS + 1)
 
 
-def calculate_relative_volume(candles: list[dict], as_of_ms: int) -> dict:
+def calculate_relative_volume(candles: list[dict], as_of_ms: int, window_minutes: int = 5) -> dict:
+    if window_minutes not in (5, 15):
+        raise ValueError('Supported RVOL periods: 5 and 15 minutes')
+    required_minutes = window_minutes * (BASELINE_WINDOWS + 1)
     end = as_of_ms // MINUTE_MS * MINUTE_MS
-    current_start = end - WINDOW_MINUTES * MINUTE_MS
-    history_start = end - REQUIRED_MINUTES * MINUTE_MS
+    current_start = end - window_minutes * MINUTE_MS
+    history_start = end - required_minutes * MINUTE_MS
     closed = {
         row['close_time_ms']: row for row in candles
         if row['is_closed'] and history_start < row['close_time_ms'] <= end
@@ -21,7 +24,7 @@ def calculate_relative_volume(candles: list[dict], as_of_ms: int) -> dict:
     times = list(range(history_start + MINUTE_MS, end + 1, MINUTE_MS))
     missing = [timestamp for timestamp in times if timestamp not in closed]
     result = {
-        'period': '5m', 'rvol': None, 'status': 'insufficient_data',
+        'period': f'{window_minutes}m', 'rvol': None, 'status': 'insufficient_data',
         'reason': 'missing_candles' if missing else None,
         'current_volume_usdt': None, 'baseline_average_volume_usdt': None,
         'baseline_windows': BASELINE_WINDOWS,
@@ -39,9 +42,9 @@ def calculate_relative_volume(candles: list[dict], as_of_ms: int) -> dict:
     except (InvalidOperation, ValueError, KeyError, TypeError):
         result.update(status='invalid_data', reason='invalid_volume')
         return result
-    # The final five minutes are excluded from the baseline.
-    current = sum(volumes[-WINDOW_MINUTES:], Decimal(0))
-    baseline = sum(volumes[:-WINDOW_MINUTES], Decimal(0)) / BASELINE_WINDOWS
+    # The current window are excluded from the baseline.
+    current = sum(volumes[-window_minutes:], Decimal(0))
+    baseline = sum(volumes[:-window_minutes], Decimal(0)) / BASELINE_WINDOWS
     result.update(current_volume_usdt=str(current), baseline_average_volume_usdt=str(baseline))
     if baseline == 0:
         result['reason'] = 'zero_baseline'

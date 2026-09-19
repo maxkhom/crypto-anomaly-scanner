@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import PriceChanges from './PriceChanges'
 import RealtimePanel from './RealtimePanel'
+import AlertHistory from './AlertHistory'
 
 type Ticker = {
   symbol: string
@@ -94,6 +95,7 @@ function App() {
         <div><span>Получено по местному времени</span><strong>{market ? new Date(market.fetched_at).toLocaleTimeString('ru-RU') : '—'}</strong></div>
       </section>
       <RealtimePanel />
+      <AlertHistory />
       {selectedSymbol && <PriceChanges key={selectedSymbol} symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />}
       <section className="panel" aria-label="Скринер">
         <div className="toolbar">

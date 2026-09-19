@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from contextlib import asynccontextmanager, suppress
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
@@ -31,6 +32,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)
+
+
+@app.get("/api/scanner/events")
+def scanner_events(limit: int = Query(default=50, ge=1, le=200)) -> dict:
+    try:
+        return trade_stream.store.list_events(limit)
+    except (sqlite3.Error, OSError) as exc:
+        raise HTTPException(503, "История событий временно недоступна") from exc
 
 
 @app.get("/api/market/realtime/all")
@@ -109,7 +118,7 @@ def health() -> dict[str, str]:
 def scanner_metrics(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
 ) -> dict:
-    source = market_data.get_candles(symbol, "1m", 243, True)
+    source = market_data.get_candles(symbol, "1m", 317, True)
     as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
     return {
         "exchange": "bitunix", "symbol": symbol,
@@ -119,6 +128,7 @@ def scanner_metrics(
         "closure_basis": source["closure_basis"],
         **calculate_price_changes(source["items"], as_of_ms),
         "relative_volume": calculate_relative_volume(source["items"], as_of_ms),
+        "relative_volume_15m": calculate_relative_volume(source["items"], as_of_ms, 15),
         "minute_momentum": calculate_minute_momentum(source["items"], as_of_ms),
     }
 
@@ -126,9 +136,11 @@ def scanner_metrics(
 @app.get("/api/scanner/relative-volume")
 def relative_volume(
     symbol: str = Query(default="BTCUSDT", pattern=r"^[A-Z0-9]{2,40}USDT$"),
+    period: Literal["5m", "15m"] = "5m",
 ) -> dict:
     # Two extra rows allow for the current minute and predecessor validation.
-    source = market_data.get_candles(symbol, "1m", 107, True)
+    window_minutes = 5 if period == "5m" else 15
+    source = market_data.get_candles(symbol, "1m", window_minutes * 21 + 2, True)
     as_of_ms = int(datetime.fromisoformat(source["as_of"]).timestamp() * 1000)
     return {
         "exchange": "bitunix", "symbol": symbol,
@@ -136,7 +148,7 @@ def relative_volume(
         "source_quality": source["data_quality"],
         "source_rejected_count": source["rejected_count"],
         "closure_basis": source["closure_basis"],
-        **calculate_relative_volume(source["items"], as_of_ms),
+        **calculate_relative_volume(source["items"], as_of_ms, window_minutes),
     }
 
 

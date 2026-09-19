@@ -71,3 +71,45 @@ class RelativeVolumeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FifteenMinuteVolumeTests(unittest.TestCase):
+    def rows(self):
+        return [{'close_time_ms': END - i * 60000, 'is_closed': True,
+                 'volume_quote': '300' if i < 15 else '100'} for i in range(315)]
+
+    def test_baseline_excludes_current_fifteen_minutes(self):
+        result = calculate_relative_volume(self.rows(), END + 30000, 15)
+        self.assertEqual(result['period'], '15m')
+        self.assertEqual(result['rvol'], 3)
+        self.assertEqual(result['current_volume_usdt'], '4500')
+        self.assertEqual(result['baseline_average_volume_usdt'], '1500')
+        self.assertEqual(result['baseline_windows'], 20)
+
+    def test_each_side_of_window_boundary_is_required(self):
+        for index in (0, 14, 15, 314):
+            rows = self.rows()
+            rows.pop(index)
+            result = calculate_relative_volume(rows, END, 15)
+            self.assertEqual(result['missing_count'], 1)
+            self.assertIsNone(result['rvol'])
+
+    def test_unclosed_and_out_of_range_are_not_used(self):
+        rows = self.rows()
+        rows[0]['is_closed'] = False
+        rows.append({'close_time_ms': END + 60000, 'is_closed': True, 'volume_quote': '999999'})
+        result = calculate_relative_volume(rows, END, 15)
+        self.assertIsNone(result['rvol'])
+        self.assertEqual(result['missing_count'], 1)
+
+    def test_zero_baseline_and_invalid_volume(self):
+        rows = self.rows()
+        for row in rows[15:]:
+            row['volume_quote'] = '0'
+        self.assertEqual(calculate_relative_volume(rows, END, 15)['reason'], 'zero_baseline')
+        rows[15]['volume_quote'] = 'NaN'
+        self.assertEqual(calculate_relative_volume(rows, END, 15)['status'], 'invalid_data')
+
+    def test_unsupported_period_rejected(self):
+        with self.assertRaises(ValueError):
+            calculate_relative_volume([], END, 10)

@@ -42,8 +42,8 @@ def normalize_candles(
 ) -> list[dict]:
     """Sort candles and estimate closure using the request start time.
 
-    Bitunix kline volume names are reversed relative to its ticker endpoint.
-    Mapping is based on observed responses; VWAP is checked against OHLC.
+    Both volume layouts have been observed in kline responses.
+    Accept only an unambiguous mapping consistent with candle prices.
     """
     duration = INTERVAL_MS[interval]
     candles = {}
@@ -69,19 +69,24 @@ def normalize_candles(
                 # Observed Bitunix convention, not a documented guarantee.
                 # Preserve raw prices; this candle is not standard OHLC.
                 warnings.append("open_outside_range_matches_previous_close")
-            # Confirmed on the kline response supplied during integration.
-            volume_base = decimal_value(row["quoteVol"])
-            volume_quote = decimal_value(row["baseVol"])
-            if volume_base < 0 or volume_quote < 0:
+            raw_base = decimal_value(row["baseVol"])
+            raw_quote = decimal_value(row["quoteVol"])
+            if raw_base < 0 or raw_quote < 0:
                 raise ValueError("Negative volume")
-            if (volume_base == 0) != (volume_quote == 0):
+            if (raw_base == 0) != (raw_quote == 0):
                 raise ValueError("Inconsistent zero volumes")
-            if volume_base > 0:
-                average_price = volume_quote / volume_base
-                # Allow a small tolerance for rounding of reported volumes.
+            volume_base, volume_quote = raw_base, raw_quote
+            if raw_base > 0:
                 tolerance = high * Decimal("0.001")
-                if not low - tolerance <= average_price <= high + tolerance:
+                candidates = list(dict.fromkeys(
+                    (base, quote) for base, quote in ((raw_base, raw_quote), (raw_quote, raw_base))
+                    if low - tolerance <= quote / base <= high + tolerance
+                ))
+                if not candidates:
                     raise ValueError("Candle volume units are inconsistent with prices")
+                if len(candidates) > 1:
+                    raise ValueError("Ambiguous candle volume units")
+                volume_base, volume_quote = candidates[0]
             candle = {
                 "open_time_ms": timestamp,
                 "open_time": iso_time(timestamp),
