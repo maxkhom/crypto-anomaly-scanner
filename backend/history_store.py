@@ -1,6 +1,7 @@
 """Versioned local receipt-price history; no trades or credentials are stored."""
 import sqlite3
 import json
+import math
 from pathlib import Path
 from decimal import Decimal
 
@@ -40,7 +41,7 @@ class HistoryStore:
         try:
             rows = conn.execute('''SELECT symbol, boundary, price, started
                 FROM receipt_boundaries_v1 WHERE boundary >= ? AND boundary <= ?
-                ORDER BY boundary''', (now - 1810, now)).fetchall()
+                ORDER BY boundary''', (math.floor(now / 10) * 10 - 1820, now)).fetchall()
             result = {}
             for symbol, stamp, price, started in rows:
                 value = None if price is None else Decimal(price)

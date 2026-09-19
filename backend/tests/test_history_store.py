@@ -9,6 +9,19 @@ from realtime import TradeStream
 
 
 class StoreTests(unittest.TestCase):
+    def test_acceleration_history_survives_restart_between_boundaries(self):
+        from short_momentum import ShortMomentum
+        with tempfile.TemporaryDirectory() as folder:
+            store = HistoryStore(Path(folder) / 'history.sqlite3')
+            rows = [(stamp, '100' if stamp < 1830 else '110') for stamp in range(10, 1831, 10)]
+            store.save([('BTCUSDT', 0, rows)], 1839.9)
+            saved = store.load(1839.9)['BTCUSDT']
+            self.assertEqual(len(saved['rows']), 183)
+            momentum = ShortMomentum()
+            momentum.started = saved['started']
+            momentum.boundaries.extend(saved['rows'])
+            self.assertEqual(momentum.calculate(1839.9, True)['price_acceleration']['score'], 100)
+
     def test_roundtrip_missing_prices_and_idempotent_save(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'history.sqlite3'

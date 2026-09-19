@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 
 type Window = { percent: number | null; status: string }
+type Acceleration = {
+  status: string; score: number | null; change_pp: number | null
+  valid_samples: number; required_samples: number; reason: string
+}
 type Snapshot = {
   symbol: string
   status: string
@@ -8,7 +12,12 @@ type Snapshot = {
   last_trade: { price: string; time: string } | null
   seconds_since_last_trade_received: number | null
   received_trade_count: number
-  short_momentum: { history?: { status: string; valid_intervals: number; required_intervals: number; percentile: number | null }; status: string; windows: Window[]; change_pp: number | null }
+  short_momentum: {
+    history?: { status: string; valid_intervals: number; required_intervals: number; percentile: number | null }
+    price_acceleration?: Acceleration
+    anomaly_score?: { components: { price_acceleration: { status: string; points: number | null; max_points: number } } }
+    status: string; windows: Window[]; change_pp: number | null
+  }
 }
 const format = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 4, signDisplay: 'exceptZero' })
 const states: Record<string, string> = {
@@ -62,10 +71,11 @@ export default function RealtimePanel() {
     return minUnusual === 0 || (unusual !== null && unusual >= minUnusual)
   }).sort((a, b) => {
     if (sort === 'symbol') return a.symbol.localeCompare(b.symbol)
-    const av = sort === 'unusual' ? unusualValue(a) : lastMove(a), bv = sort === 'unusual' ? unusualValue(b) : lastMove(b)
+    const av = sort === 'acceleration' ? accelerationPoints(a) : sort === 'unusual' ? unusualValue(a) : lastMove(a)
+    const bv = sort === 'acceleration' ? accelerationPoints(b) : sort === 'unusual' ? unusualValue(b) : lastMove(b)
     if (av === null) return bv === null ? a.symbol.localeCompare(b.symbol) : 1
     if (bv === null) return -1
-    const difference = sort === 'growth' || sort === 'unusual' ? bv - av : sort === 'fall' ? av - bv : Math.abs(bv) - Math.abs(av)
+    const difference = sort === 'growth' || sort === 'unusual' || sort === 'acceleration' ? bv - av : sort === 'fall' ? av - bv : Math.abs(bv) - Math.abs(av)
     return difference || a.symbol.localeCompare(b.symbol)
   })
   const readyMoves = (universe?.items ?? []).filter((item) => lastMove(item) !== null).length
@@ -82,7 +92,7 @@ export default function RealtimePanel() {
       <div className="toolbar"><div><h2>Быстрые движения · весь список</h2><p>Обновление каждую секунду · интервалы по 10 секунд: от старого к новому</p></div>
         <label className="realtime-selector">Сортировка
           <select value={sort} onChange={(event) => setSort(event.target.value)}>
-            <option value="unusual">Необычность цены</option><option value="strength">Сила движения</option><option value="growth">Рост</option>
+            <option value="unusual">Необычность цены</option><option value="acceleration">Необычность ускорения</option><option value="strength">Сила движения</option><option value="growth">Рост</option>
             <option value="fall">Падение</option><option value="symbol">Монета</option>
           </select>
         </label>
@@ -112,7 +122,7 @@ export default function RealtimePanel() {
       </p>
       {error && <p className="notice error" role="alert">Нет свежих данных backend. Повторяем подключение…</p>}
       <div className="table-scroll" tabIndex={0} role="region" aria-label="Быстрые движения, доступна горизонтальная прокрутка">
-        <table><thead><tr><th>Монета</th><th>Цена, USDT</th><th>Самый ранний · 10 с</th><th>Предыдущий · 10 с</th><th>Последний завершённый · 10 с</th><th>Темп, п.п.</th><th title="Доля предыдущих движений, которые последнее превысило по абсолютной величине">Необычность цены</th><th>Состояние</th></tr></thead>
+        <table><thead><tr><th>Монета</th><th>Цена, USDT</th><th>Самый ранний · 10 с</th><th>Предыдущий · 10 с</th><th>Последний завершённый · 10 с</th><th>Темп, п.п.</th><th title="Доля предыдущих движений, которые последнее превысило по абсолютной величине">Необычность цены</th><th title="Вклад необычности изменения темпа в будущий Anomaly Score; максимум 25 баллов">Ускорение · /25</th><th>Состояние</th></tr></thead>
           <tbody>{rows.map((item) => <tr key={item.symbol}>
             <td><button className="symbol-button" aria-pressed={symbol === item.symbol} onClick={() => setSymbol(item.symbol)}>{item.symbol}</button></td>
             <td>{item.status === 'live' ? item.last_trade?.price ?? '—' : '—'}</td>
@@ -123,6 +133,7 @@ export default function RealtimePanel() {
             })}
             <td>{item.status === 'live' && item.short_momentum.change_pp !== null ? format.format(item.short_momentum.change_pp) : '—'}</td>
             <td><UnusualCell item={item} /></td>
+            <td><AccelerationCell item={item} /></td>
             <td>{states[item.status]}<small>{item.status === 'live' && item.short_momentum.status === 'warming_up' ? 'Накапливаем историю' : item.status === 'live' && item.short_momentum.status === 'missing_data' ? 'Пропуски в расчётах' : ''}
               {item.seconds_since_last_trade_received !== null ? ` · Получено ${item.seconds_since_last_trade_received.toFixed(1)} с назад` : ''}</small></td>
           </tr>)}</tbody>
@@ -130,6 +141,7 @@ export default function RealtimePanel() {
         {!rows.length && <p className="empty">{emptyMessage}</p>}
       </div>
       <p className="metric-note">Сила движения — абсолютное изменение последнего интервала. Необычность цены — доля движений предыдущих 30 минут, которые последнее превысило по модулю. Это не вероятность успеха сделки и ещё не Anomaly Score. Границы интервалов общие для всех монет: :00, :10, :20… Время определяется получением данных сервером.</p>
+      <p className="metric-note">Ускорение · /25 — отдельный компонент будущего Score: необычность разницы доходностей двух соседних интервалов. Сравнение с 180 предыдущими разницами по модулю. Высокое значение возможно при ускорении, замедлении или развороте, даже если движение мало по величине.</p>
     </section>
     <p className="metric-note">{error ? 'Не удалось обновить список потоков. Повторяем запрос…'
       : universe?.count ? `Выбрано контрактов: ${universe.count}. Свежие сделки: ${universe.live_count}.`
@@ -162,6 +174,23 @@ function unusualValue(item: Snapshot): number | null {
   return item.status === 'live' && history?.status === 'ok'
     && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
     ? value : null
+}
+
+function accelerationPoints(item: Snapshot): number | null {
+  const component = item.short_momentum.anomaly_score?.components?.price_acceleration
+  return item.status === 'live' && item.short_momentum.price_acceleration?.status === 'ok'
+    && component?.status === 'ok' && component.max_points === 25
+    && typeof component.points === 'number' && Number.isFinite(component.points)
+    && component.points >= 0 && component.points <= 25 ? component.points : null
+}
+
+function AccelerationCell({ item }: { item: Snapshot }) {
+  const points = accelerationPoints(item)
+  const metric = item.short_momentum.price_acceleration
+  if (points !== null) return <span title={metric?.reason}>{points.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} / 25</span>
+  if (item.status !== 'live') return <>—<small>Нет свежих сделок</small></>
+  if (!metric) return <>—</>
+  return <>—<small>{metric.status === 'warming_up' ? 'История' : 'Недостаточно данных'} {metric.valid_samples}/{metric.required_samples}</small></>
 }
 
 function UnusualCell({ item }: { item: Snapshot }) {
@@ -203,6 +232,16 @@ function RealtimeDetails({ symbol, data, error }: { symbol: string; data: Snapsh
       })}
       <div className="metric"><span>Изменение темпа</span><strong>{showChange ? `${format.format(momentum!.change_pp!)} п.п.` : '—'}</strong><small>Последний интервал минус предыдущий</small></div>
     </div>
+    {data && momentum?.price_acceleration && <div className="momentum-panel">
+      <h3>Компонент Anomaly Score · Ускорение цены</h3>
+      <div className="metric">
+        <span>Вклад в будущий общий Score</span>
+        <strong><AccelerationCell item={data} /></strong>
+        <small>{live ? momentum.price_acceleration.reason : 'Нет свежих сделок: оценка недоступна.'}</small>
+        <small>История: {momentum.price_acceleration.valid_samples} / {momentum.price_acceleration.required_samples} изменений темпа.</small>
+      </div>
+      <p className="metric-note">Оценка 95 из 100 означает 23,75 из 25 баллов компонента. Сравниваются модули изменения темпа; равные значения не считаются превышенными. Это относительный ранг, а не вероятность сделки. Общий Score появится после подключения остальных компонентов.</p>
+    </div>}
     {momentum?.history && <p className="metric-note">
       История для сравнения: {momentum.history.valid_intervals} / {momentum.history.required_intervals} корректных интервалов.
       {' '}{!live ? 'Оценка недоступна: нет свежих сделок.'

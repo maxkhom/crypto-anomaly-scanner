@@ -3,6 +3,8 @@ from collections import deque
 from decimal import Decimal
 from datetime import datetime, timezone
 import math
+from price_acceleration import calculate_price_acceleration
+from anomaly_score import calculate_anomaly_score
 
 
 def iso(seconds):
@@ -14,8 +16,8 @@ class ShortMomentum:
         self.started = None
         self.last_sample = None
         self.next_boundary = None
-        # 182 prices define 181 returns: 180 baseline + one evaluated return.
-        self.boundaries = deque(maxlen=182)
+        # 183 prices define 182 returns and 181 adjacent return differences.
+        self.boundaries = deque(maxlen=183)
 
     def advance(self, now):
         if self.next_boundary is None:
@@ -26,7 +28,7 @@ class ShortMomentum:
         # Large gaps must not create unbounded work.
         if now - self.next_boundary > 1830:
             self.boundaries.clear()
-            self.next_boundary = math.floor(now / 10) * 10 - 1810
+            self.next_boundary = math.floor(now / 10) * 10 - 1820
         while self.next_boundary <= now:
             price = None
             if self.last_sample and 0 < self.next_boundary - self.last_sample[0] <= 2:
@@ -59,9 +61,18 @@ class ShortMomentum:
                    "missing_intervals": 180 - len(valid), "baseline_from": iso(end - 1810),
                    "baseline_to": iso(end - 10), "evaluated_from": iso(end - 10),
                    "evaluated_to": iso(end), "status": "unavailable", "percentile": None}
+        acceleration = calculate_price_acceleration(
+            [change(end - offset * 10) for offset in range(181, -1, -1)],
+            live and self.started is not None,
+            self.started is None or self.started > end - 1820,
+        )
+        acceleration.update(baseline_from=iso(end - 1810), baseline_to=iso(end - 10),
+                            baseline_support_from=iso(end - 1820),
+                            evaluated_from=iso(end - 10), evaluated_to=iso(end))
         result = {"time_basis": "local_receipt_utc", "period_seconds": 10,
                   "status": "unavailable", "windows": [], "change_pp": None,
-                  "history": history}
+                  "history": history, "price_acceleration": acceleration,
+                  "anomaly_score": calculate_anomaly_score({'price_acceleration': acceleration})}
         if not live or self.started is None:
             return result
         history["status"] = "warming_up" if self.started > end - 1810 else "missing_data"

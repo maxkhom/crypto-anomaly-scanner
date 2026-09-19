@@ -52,7 +52,7 @@ class ShortMomentumTests(unittest.TestCase):
         data.add(100000, "110")
         result = data.calculate(100000, True)
         self.assertEqual(data.started, 0)
-        self.assertEqual(len(data.boundaries), 182)
+        self.assertEqual(len(data.boundaries), 183)
         self.assertEqual(result["history"]["status"], "missing_data")
         self.assertEqual(result["history"]["valid_intervals"], 0)
         self.assertIsNone(result["history"]["percentile"])
@@ -99,7 +99,7 @@ class HistoryTests(unittest.TestCase):
         after = data.calculate(1811, True)
         self.assertEqual(before["history"], after["history"])
         self.assertEqual(before["windows"][-1]["percent"], after["windows"][-1]["percent"])
-        self.assertLessEqual(len(data.boundaries), 182)
+        self.assertLessEqual(len(data.boundaries), 183)
 
     def test_common_boundaries_despite_different_start_times(self):
         first, second = ShortMomentum(), ShortMomentum()
