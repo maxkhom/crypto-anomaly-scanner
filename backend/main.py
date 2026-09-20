@@ -21,6 +21,7 @@ from open_interest import get_open_interest
 from funding import get_funding
 from rsi import calculate_rsi
 from volatility import calculate_volatility
+from score_service import get_score
 
 
 @asynccontextmanager
@@ -39,6 +40,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Crypto Anomaly Scanner", lifespan=lifespan)
+
+
+@app.get('/api/scanner/anomaly-score')
+async def anomaly_score(symbol: str = Query(default='BTCUSDT', pattern=r'^[A-Z0-9]{2,40}USDT$')) -> dict:
+    return await get_score(symbol, trade_stream)
 
 
 @app.get("/api/scanner/events")
