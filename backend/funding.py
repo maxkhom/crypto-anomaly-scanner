@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from bitunix import BASE_URL, MarketDataError, iso_time
+from extras_score import score_funding
 
 
 def normalize_funding(payload, symbol, now_ms):
@@ -28,12 +29,13 @@ def normalize_funding(payload, symbol, now_ms):
     if not stamp.is_finite() or stamp <= 0 or stamp != stamp.to_integral_value():
         raise ValueError('Invalid settlement timestamp')
     next_ms = int(stamp)
-    return {'exchange': 'bitunix', 'symbol': symbol, 'funding_rate_pct': str(rate),
+    result = {'exchange': 'bitunix', 'symbol': symbol, 'funding_rate_pct': str(rate),
             'unit': 'percent', 'interval_hours': int(interval), 'next_funding_time': iso_time(next_ms),
             'min_funding_rate_pct': str(lower), 'max_funding_rate_pct': str(upper),
             'payment_direction': 'shorts_pay_longs' if rate < 0 else 'longs_pay_shorts' if rate > 0 else 'none',
             'status': 'ok' if next_ms > now_ms else 'settlement_time_passed',
             'fetched_at': iso_time(now_ms)}
+    return {**result, 'score_part': score_funding(result)}
 
 
 def get_funding(symbol):

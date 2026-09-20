@@ -5,6 +5,7 @@ type Funding = {
   interval_hours: number; next_funding_time: string; fetched_at: string
   min_funding_rate_pct: string; max_funding_rate_pct: string
   payment_direction: string; status: string
+  score_part?: { status: string; points: number | null; max_points: number; reason: string }
 }
 const format = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 6, signDisplay: 'exceptZero' })
 const directions: Record<string, string> = {
@@ -48,6 +49,14 @@ export default function FundingRate({ symbol }: { symbol: string }) {
     <div><h3>Funding Rate · Bitunix</h3>
       <strong className="rvol-value">{data ? `${format.format(Number(data.funding_rate_pct))}%` : '—'}</strong>
       {data && <p>За период {data.interval_hours} ч · {directions[data.payment_direction]}</p>}
+      {data?.score_part && <>
+        <h3>Funding · вклад в Extras</h3>
+        <strong className="rvol-value">{!expired && data.score_part.status === 'ok'
+          && typeof data.score_part.points === 'number' && Number.isFinite(data.score_part.points)
+          && data.score_part.points >= 0 && data.score_part.points <= 5 && data.score_part.max_points === 5
+          ? `${data.score_part.points.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} / 5` : '—'}</strong>
+        <p>{data.score_part.reason}</p>
+      </>}
     </div>
     <div className="rvol-details">
       {!data && !error && <p role="status">Получаем ставку финансирования…</p>}
@@ -58,6 +67,7 @@ export default function FundingRate({ symbol }: { symbol: string }) {
         <p>Получено: {new Date(data.fetched_at).toLocaleString('ru-RU')}</p>
         {expired && <p className="rvol-warning">Время начисления прошло. Показана ранее полученная ставка — требуется обновление.</p>}
         <p>Ставка может измениться до начисления. Funding — дополнительный показатель, а не самостоятельный сигнал на вход.</p>
+        {data.score_part && <p>Предварительное правило: половина соответствующего предела ставки даёт 2,5/5 балла. Используется предел для текущего периода начисления. Эта оценка не сравнивает стоимость Funding за одинаковое число часов и может меняться при изменении пределов биржи.</p>}
       </>}
       {(error || expired) && <button className="refresh" onClick={() => { setData(null); setError(''); setRevision((value) => value + 1) }}>Обновить funding</button>}
     </div>

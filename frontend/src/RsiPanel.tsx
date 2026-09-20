@@ -4,6 +4,7 @@ type Result = {
   symbol: string; interval: string; period: number; method: string
   rsi: number | null; status: string; to_time: string
   missing_count: number; warning_count: number
+  score_part?: { status: string; points: number | null; max_points: number; reason: string }
 }
 function RsiMetric({ symbol, interval }: { symbol: string; interval: '15m' | '1h' }) {
   const [data, setData] = useState<Result | null>(null)
@@ -37,6 +38,14 @@ function RsiMetric({ symbol, interval }: { symbol: string; interval: '15m' | '1h
     {!data && !error && <small role="status">Загрузка…</small>}
     {error && <><small role="alert">{error}</small><button className="refresh" onClick={() => { setError(''); setData(null); setRevision((value) => value + 1) }}>Повторить</button></>}
     {value !== null && <small>{value >= 70 ? 'Зона ≥70' : value <= 30 ? 'Зона ≤30' : 'Между 30 и 70'}</small>}
+    {interval === '15m' && data?.score_part && <>
+      <small>RSI · вклад в Extras</small>
+      <strong>{data.status === 'ok' && data.score_part.status === 'ok'
+        && typeof data.score_part.points === 'number' && Number.isFinite(data.score_part.points)
+        && data.score_part.points >= 0 && data.score_part.points <= 5 && data.score_part.max_points === 5
+        ? `${data.score_part.points.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} / 5` : '—'}</strong>
+      <small>{data.score_part.reason}</small>
+    </>}
     {data && <>
       <small>Закрытие: {new Date(data.to_time).toLocaleString('ru-RU')}</small>
       {data.status !== 'ok' && <small>{data.status === 'insufficient_data' ? `Отсутствует закрытий: ${data.missing_count}` : 'Некорректные цены закрытия'}</small>}
@@ -53,5 +62,6 @@ export default function RsiPanel({ symbol }: { symbol: string }) {
       <RsiMetric key={`${symbol}-1h`} symbol={symbol} interval="1h" />
     </div>
     <p className="metric-note">RSI(14), сглаживание Уайлдера, история 100 закрытий. Шкала от 0 до 100; отметки 30 и 70 — ориентиры. Достижение этих уровней не подтверждает разворот. Обновление — кнопкой «Обновить расчёты».</p>
+    <p className="metric-note">Extras — дополнительный компонент будущего Score: Funding до 5 баллов и RSI 15 минут до 5 баллов. Предварительные правила, не исторические ранги. Например, RSI 15 или 85 даёт 2,5/5. Часовой RSI остаётся дополнительным показателем; его баллы повторно не добавляются.</p>
   </div>
 }

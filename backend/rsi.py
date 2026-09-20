@@ -1,10 +1,15 @@
 """RSI(14), Wilder smoothing, seeded on a fixed 100-close history."""
 from decimal import Decimal, InvalidOperation
 from bitunix import iso_time
+from extras_score import score_rsi
 
 PERIOD = 14
 HISTORY_CLOSES = 100
 INTERVALS = {'15m': 900000, '1h': 3600000}
+
+
+def _with_score(result):
+    return {**result, 'score_part': score_rsi(result)} if result['interval'] == '15m' else result
 
 
 def wilder_rsi(closes, period=PERIOD):
@@ -44,14 +49,14 @@ def calculate_rsi(candles, as_of_ms, interval):
               'from_time': iso_time(times[0]), 'to_time': iso_time(end),
               'flat_history_value': 50}
     if conflict:
-        return {**result, 'status': 'invalid_data'}
+        return _with_score({**result, 'status': 'invalid_data'})
     if missing:
-        return result
+        return _with_score(result)
     try:
         closes = [Decimal(str(rows[stamp]['close'])) for stamp in times]
         if any(not value.is_finite() or value <= 0 for value in closes):
             raise ValueError('Invalid close')
         value = wilder_rsi(closes)
     except (InvalidOperation, ValueError, TypeError, KeyError):
-        return {**result, 'status': 'invalid_data'}
-    return {**result, 'status': 'ok', 'rsi': float(round(value, 4))}
+        return _with_score({**result, 'status': 'invalid_data'})
+    return _with_score({**result, 'status': 'ok', 'rsi': float(round(value, 4))})
