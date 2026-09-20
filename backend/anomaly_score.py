@@ -12,7 +12,7 @@ AGGREGATION_VERSION = 'weighted_components_v1'
 COMPONENTS = (
     ('price_acceleration', 'Ускорение цены', 25),
     ('relative_volume', 'Относительный объём', 25),
-    ('open_interest', 'Изменение OI · Bybit', 25),
+    ('open_interest', 'Изменение OI', 25),
     ('volatility', 'Волатильность', 15),
     ('extras', 'Экстремумы Funding / RSI', 10),
 )

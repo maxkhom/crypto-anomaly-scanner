@@ -42,7 +42,7 @@ export default function AnomalyScorePanel({ symbol }: { symbol: string }) {
 
   return <section className="momentum-panel score-panel" aria-label={`Anomaly Score ${symbol}`} aria-busy={loading}>
     <div className="toolbar">
-      <div><h3>Anomaly Score · {symbol}</h3><p>Экспериментальная оценка · Bitunix + OI Bybit</p></div>
+      <div><h3>Anomaly Score · {symbol}</h3><p>Экспериментальная оценка · Bitunix + внешний OI</p></div>
       <button className="refresh" disabled={loading} onClick={refresh}>{loading ? 'Расчёт…' : data || error ? 'Обновить Score' : 'Рассчитать Score'}</button>
     </div>
     {!data && !error && <p className="metric-note" role="status">{loading ? 'Получаем данные и проверяем пять компонентов…' : 'Нажмите «Рассчитать Score», чтобы получить общий результат для выбранной монеты.'}</p>}
@@ -60,7 +60,7 @@ export default function AnomalyScorePanel({ symbol }: { symbol: string }) {
             const details = item.details
             const observed = date(details.observed_at)
             return <tr key={key}>
-              <td>{item.label}<small>{details.exchange === 'bybit' ? 'Bybit' : 'Bitunix'}</small></td>
+              <td>{item.label}<small>{details.exchange === 'bybit' ? 'Bybit' : details.exchange === 'binance' ? 'Binance' : details.exchange === 'bitunix' ? 'Bitunix' : 'Источник недоступен'}</small></td>
               <td>{item.points === null ? `— / ${item.max_points}` : `${format(item.points)} / ${item.max_points}`}</td>
               <td>{statuses[item.status]}{observed && <small>{observed}</small>}
                 {typeof details.valid_samples === 'number' && typeof details.required_samples === 'number' && <small>История {details.valid_samples}/{details.required_samples}</small>}
@@ -76,7 +76,7 @@ export default function AnomalyScorePanel({ symbol }: { symbol: string }) {
         </table>
       </div>
       {data.score === null && <p className="metric-note">Итог недоступен, пока не готовы все пять компонентов. Пропуски не заменяются нулями, веса не перераспределяются.</p>}
-      <p className="metric-note">Score описывает необычность по правилам модели, а не вероятность успешной сделки. OI относится к Bybit; цены и объёмы — к Bitunix. Модель: {data.model_version}.</p>
+      <p className="metric-note">Score описывает необычность по правилам модели, а не вероятность успешной сделки. Источник OI указан в таблице; цены и объёмы — к Bitunix. Модель: {data.model_version}.</p>
     </>}
   </section>
 }

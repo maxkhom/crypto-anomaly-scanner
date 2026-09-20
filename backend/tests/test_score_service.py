@@ -47,6 +47,16 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual(result['components']['extras']['details']['parts']['funding']['points'], 2.5)
         self.assertEqual((sources, snapshot), before)
 
+    def test_binance_source_composes_without_changing_weights(self):
+        sources, snapshot = fixtures()
+        sources['oi']['exchange'] = 'binance'
+        result = compose_score('BTCUSDT', NOW, sources, snapshot)
+        self.assertEqual(result['score'], 32.5)
+        self.assertEqual(result['markets'], ['bitunix', 'binance'])
+        self.assertEqual(result['components']['open_interest']['details']['exchange'], 'binance')
+        sources['oi']['exchange'] = 'unknown'
+        self.assertIsNone(compose_score('BTCUSDT', NOW, sources, snapshot)['score'])
+
     def test_partial_oi_failure_does_not_erase_other_components(self):
         sources, snapshot = fixtures()
         sources['oi'] = {'status': 'unavailable', 'reason': 'Bybit: HTTP 403'}

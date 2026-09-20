@@ -167,6 +167,56 @@ class ContractMatchTests(unittest.TestCase):
     def test_missing_contract_skips_oi_request(self):
         from unittest.mock import patch
         from open_interest import get_open_interest
-        with patch('open_interest.market_data.get_active_usdt_futures', return_value=[{'symbol': 'SOLUSDT', 'base': 'SOL'}]), patch('open_interest.bybit_request', return_value={'result': {'category': 'linear', 'list': []}}) as request:
+        with patch('open_interest.market_data.get_active_usdt_futures', return_value=[{'symbol': 'SOLUSDT', 'base': 'SOL'}]), patch('open_interest.bybit_request', return_value={'result': {'category': 'linear', 'list': []}}) as request, patch('open_interest.binance_request', return_value={'symbols': []}):
             self.assertEqual(get_open_interest('SOLUSDT')['status'], 'unavailable')
             self.assertEqual(request.call_count, 1)
+
+
+class BinanceFallbackTests(unittest.TestCase):
+    def rows(self):
+        return [{'symbol': 'ONEUSDT', 'timestamp': END - n * STEP,
+                 'sumOpenInterest': '110' if n == 0 else '100'} for n in range(22)]
+
+    def metadata(self, **changes):
+        return {'symbols': [{'symbol': 'ONEUSDT', 'baseAsset': 'ONE', 'quoteAsset': 'USDT',
+                             'marginAsset': 'USDT', 'status': 'TRADING', 'contractType': 'PERPETUAL', **changes}]}
+
+    def test_fallback_uses_only_binance_history(self):
+        from unittest.mock import patch
+        from open_interest import get_open_interest
+        with patch('open_interest.market_data.get_active_usdt_futures', return_value=[{'symbol': 'ONEUSDT', 'base': 'ONE'}]), patch('open_interest.bybit_request', return_value={'result': {'category': 'linear', 'list': []}}) as bybit, patch('open_interest.binance_request', side_effect=[self.metadata(), self.rows(), {'serverTime': END + 1000}]) as binance:
+            result = get_open_interest('ONEUSDT')
+        self.assertEqual(bybit.call_count, 1)
+        self.assertEqual(binance.call_args_list[1].kwargs, {'symbol': 'ONEUSDT', 'period': '5m', 'limit': 22})
+        self.assertEqual(result['exchange'], 'binance')
+        self.assertEqual(result['score_component']['exchange'], 'binance')
+        self.assertEqual(result['score_component']['points'], 25)
+        self.assertEqual(result['changes']['1h']['percent'], 10)
+        self.assertEqual(result['source_field'], 'sumOpenInterest')
+
+    def test_matching_bybit_never_falls_back_even_empty_history(self):
+        from unittest.mock import patch
+        from open_interest import get_open_interest
+        with patch('open_interest.market_data.get_active_usdt_futures', return_value=[{'symbol': 'SOLUSDT', 'base': 'SOL'}]), patch('open_interest.bybit_request', side_effect=[ContractMatchTests().metadata(), {'result': {'list': []}}]), patch('open_interest.binance_request') as request:
+            self.assertEqual(get_open_interest('SOLUSDT')['status'], 'unavailable')
+            request.assert_not_called()
+
+    def test_wrong_contract_types_and_multipliers(self):
+        from open_interest import match_binance_contract
+        self.assertEqual(match_binance_contract(self.metadata(), 'ONEUSDT', 'ONE'), 'ONE')
+        for change in ({'status': 'SETTLING'}, {'contractType': 'CURRENT_QUARTER'}, {'baseAsset': 'OTHER'}, {'marginAsset': 'USDC'}, {'quoteAsset': 'USDC'}):
+            self.assertIsNone(match_binance_contract(self.metadata(**change), 'ONEUSDT', 'ONE'))
+        self.assertIsNone(match_binance_contract(self.metadata(), '1000ONEUSDT', 'ONE'))
+
+    def test_history_validation_and_gaps(self):
+        from open_interest import calculate_binance_open_interest as calc
+        for mutation in ('symbol', 'future', 'nan', 'duplicate'):
+            rows = self.rows()
+            if mutation == 'symbol': rows[0]['symbol'] = 'BTCUSDT'
+            if mutation == 'future': rows[0]['timestamp'] = END + STEP
+            if mutation == 'nan': rows[0]['sumOpenInterest'] = 'NaN'
+            if mutation == 'duplicate': rows.append({**rows[0], 'sumOpenInterest': '999'})
+            with self.assertRaises(ValueError): calc(rows, END + 1000, 'ONEUSDT', 'ONE')
+        rows = self.rows(); rows.pop(10)
+        self.assertIsNone(calc(rows, END + 1000, 'ONEUSDT', 'ONE')['score_component']['points'])
+        self.assertEqual(calc(self.rows(), END + 2 * STEP + 1, 'ONEUSDT', 'ONE')['status'], 'stale')

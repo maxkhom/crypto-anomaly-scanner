@@ -93,12 +93,15 @@ def compose_score(symbol, now, sources, snapshot):
     calculate('relative_volume', sources['minute'], volume, 'bitunix', 'as_of', 60000)
 
     def oi(source):
+        if source['exchange'] not in ('bybit', 'binance'):
+            raise ValueError('Unsupported OI exchange')
         return _metric(source['score_component']), {
             'observed_at': source['measured_at'], 'period': '5m',
             'version': source['score_component']['version'], 'unit': source['unit'],
+            'definition': source.get('definition'), 'source_field': source.get('source_field'),
         }
 
-    calculate('open_interest', sources['oi'], oi, 'bybit', 'measured_at', 600000)
+    calculate('open_interest', sources['oi'], oi, sources['oi'].get('exchange'), 'measured_at', 600000)
 
     def volatility(source):
         result = calculate_volatility(candles(source, '15m'), now, '15m')
@@ -130,9 +133,9 @@ def compose_score(symbol, now, sources, snapshot):
     result = calculate_anomaly_score(inputs)
     for key, component in result['components'].items():
         component['details'] = details[key]
-    return {'symbol': symbol, 'as_of': iso_time(now), 'model_version': 'cross_market_score_v1',
+    return {'symbol': symbol, 'as_of': iso_time(now), 'model_version': 'cross_market_score_v2',
             'time_policy': 'latest_available_at_request_completion',
-            'markets': ['bitunix', 'bybit'], **result}
+            'markets': ['bitunix'] + ([sources['oi']['exchange']] if sources['oi'].get('exchange') in ('bybit', 'binance') else []), **result}
 
 
 async def get_score(symbol, stream):
@@ -148,7 +151,7 @@ async def get_score(symbol, stream):
     minute, fifteen, oi, funding = await asyncio.gather(
         fetch('свечи 1m', market_data.get_candles, symbol, '1m', 107, True),
         fetch('свечи 15m', market_data.get_candles, symbol, '15m', 102, True),
-        fetch('OI Bybit', get_open_interest, symbol),
+        fetch('OI', get_open_interest, symbol),
         fetch('Funding', get_funding, symbol),
     )
     # Never read mutable realtime history from a worker thread.
