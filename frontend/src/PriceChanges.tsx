@@ -4,6 +4,7 @@ import OpenInterest from './OpenInterest'
 import FundingRate from './FundingRate'
 import RsiPanel from './RsiPanel'
 import VolatilityPanel from './VolatilityPanel'
+import AnomalyScorePanel from './AnomalyScorePanel'
 
 const periods = ['1m', '5m', '15m', '1h', '4h'] as const
 const labels = { '1m': '1 минута', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '4h': '4 часа' }
@@ -97,6 +98,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
           <button className="close-panel" onClick={onClose} aria-label="Закрыть панель монеты">×</button>
         </div>
       </div>
+      <AnomalyScorePanel key={`score-${symbol}-${revision}`} symbol={symbol} />
       {loading && <p className="empty" role="status">Получаем историю {symbol}…</p>}
       {error && <p className="notice error" role="alert">{error}</p>}
       {data && <>
@@ -155,7 +157,7 @@ export default function PriceChanges({ symbol, onClose }: { symbol: string; onCl
             <p>Окно: {new Date(metric.current_from).toLocaleTimeString('ru-RU')}–{new Date(metric.current_to).toLocaleTimeString('ru-RU')} (местное время)</p>
             {metric.status !== 'ok' && <p className="rvol-warning">{metric.reason === 'zero_baseline' ? 'Средний исторический объём равен нулю; RVOL не определён.' : metric.reason === 'missing_candles' ? `Недостаточно данных: отсутствует минут — ${metric.missing_count}.` : 'Некорректные данные объёма.'}</p>}
             {metric.warning_count > 0 && <p className="rvol-warning">Свечей с предупреждением об открытии: {metric.warning_count}. Объёмы прошли проверку.</p>}
-            {minutes === 5 && metric.score_component && <p>Вклад — доля исторических окон с меньшим объёмом × 25. Например, 19 из 20 дают 23,75 балла. Ранг оценивает место в истории, RVOL — отношение к среднему: высокий ранг возможен и при небольшом превышении объёма. Это отдельный компонент, общий Score ещё не готов. Обновление — кнопкой «Обновить расчёты».</p>}
+            {minutes === 5 && metric.score_component && <p>Вклад — доля исторических окон с меньшим объёмом × 25. Например, 19 из 20 дают 23,75 балла. Ранг оценивает место в истории, RVOL — отношение к среднему: высокий ранг возможен и при небольшом превышении объёма. Общий Score рассчитывается отдельной кнопкой в панели монеты. Обновление — кнопкой «Обновить расчёты».</p>}
           </div>
         </div>
         ))}

@@ -126,7 +126,7 @@ export default function RealtimePanel() {
       </p>
       {error && <p className="notice error" role="alert">Нет свежих данных backend. Повторяем подключение…</p>}
       <div className="table-scroll" tabIndex={0} role="region" aria-label="Быстрые движения, доступна горизонтальная прокрутка">
-        <table><thead><tr><th>Монета</th><th>Цена, USDT</th><th>Самый ранний · 10 с</th><th>Предыдущий · 10 с</th><th>Последний завершённый · 10 с</th><th>Темп, п.п.</th><th title="Доля предыдущих движений, которые последнее превысило по абсолютной величине">Необычность цены</th><th title="Вклад необычности изменения темпа в будущий Anomaly Score; максимум 25 баллов">Ускорение · /25</th><th>Состояние</th></tr></thead>
+        <table><thead><tr><th>Монета</th><th>Цена, USDT</th><th>Самый ранний · 10 с</th><th>Предыдущий · 10 с</th><th>Последний завершённый · 10 с</th><th>Темп, п.п.</th><th title="Доля предыдущих движений, которые последнее превысило по абсолютной величине">Необычность цены</th><th title="Вклад необычности изменения темпа в Anomaly Score; максимум 25 баллов">Ускорение · /25</th><th>Состояние</th></tr></thead>
           <tbody>{rows.map((item) => <tr key={item.symbol}>
             <td><button className="symbol-button" aria-pressed={symbol === item.symbol} onClick={() => setSymbol(item.symbol)}>{item.symbol}</button></td>
             <td>{item.status === 'live' ? item.last_trade?.price ?? '—' : '—'}</td>
@@ -145,7 +145,7 @@ export default function RealtimePanel() {
         {!rows.length && <p className="empty">{emptyMessage}</p>}
       </div>
       <p className="metric-note">Сила движения — абсолютное изменение последнего интервала. Необычность цены — доля из 180 последних валидных 10-секундных движений, которые последнее превысило по модулю. Поиск — в пределах 45 минут перед оцениваемым интервалом; пропуски исключаются без заполнения. Это не вероятность успеха сделки и ещё не Anomaly Score. Границы интервалов общие для всех монет: :00, :10, :20… Время определяется получением данных сервером.</p>
-      <p className="metric-note">Ускорение · /25 — отдельный компонент будущего Score: необычность разницы доходностей двух соседних интервалов. Сравнение с 180 предыдущими разницами по модулю. Высокое значение возможно при ускорении, замедлении или развороте, даже если движение мало по величине.</p>
+      <p className="metric-note">Ускорение · /25 — отдельный компонент Anomaly Score: необычность разницы доходностей двух соседних интервалов. Сравнение с 180 предыдущими разницами по модулю. Высокое значение возможно при ускорении, замедлении или развороте, даже если движение мало по величине.</p>
     </section>
     <p className="metric-note">{error ? 'Не удалось обновить список потоков. Повторяем запрос…'
       : universe?.count ? `Выбрано контрактов: ${universe.count}. Свежие сделки: ${universe.live_count}.`
@@ -240,12 +240,12 @@ function RealtimeDetails({ symbol, data, error }: { symbol: string; data: Snapsh
     {data && momentum?.price_acceleration && <div className="momentum-panel">
       <h3>Компонент Anomaly Score · Ускорение цены</h3>
       <div className="metric">
-        <span>Вклад в будущий общий Score</span>
+        <span>Вклад в общий Score</span>
         <strong><AccelerationCell item={data} /></strong>
         <small>{live ? momentum.price_acceleration.reason : 'Нет свежих сделок: оценка недоступна.'}</small>
         <small>История: {momentum.price_acceleration.valid_samples} / {momentum.price_acceleration.required_samples} изменений темпа.</small>
       </div>
-      <p className="metric-note">Оценка 95 из 100 означает 23,75 из 25 баллов компонента. Сравниваются модули изменения темпа; равные значения не считаются превышенными. Это относительный ранг, а не вероятность сделки. Общий Score появится после подключения остальных компонентов.</p>
+      <p className="metric-note">Оценка 95 из 100 означает 23,75 из 25 баллов компонента. Сравниваются модули изменения темпа; равные значения не считаются превышенными. Это относительный ранг, а не вероятность сделки. Общий Score рассчитывается отдельной кнопкой в панели монеты.</p>
     </div>}
     {momentum?.history && <p className="metric-note">
       История для сравнения: {momentum.history.valid_intervals} / {momentum.history.required_intervals} корректных интервалов.

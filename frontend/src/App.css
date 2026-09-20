@@ -369,5 +369,14 @@ footer {
 .scanner-filters .refresh { min-height: 44px; }
 @media (max-width: 680px) { .scanner-filters { padding-inline: 14px; } .scanner-filters .realtime-selector { width: 100%; } }
 
+.score-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 20px 24px; }
+.score-summary span, .score-summary p { color: #aab8ca; font-size: 13px; }
+.score-summary strong { display: block; font-size: 32px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.score-table { min-width: 720px; }
+.score-table td { white-space: normal; text-align: left; vertical-align: top; }
+.score-table th { text-align: left; }
+.score-table td:nth-child(2) { white-space: nowrap; }
+.score-table td:last-child { min-width: 260px; max-width: 440px; line-height: 1.5; }
+@media (max-width: 600px) { .score-summary { grid-template-columns: 1fr; padding: 18px 14px; gap: 12px; } }
 .rsi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 480px) { .rsi-grid { grid-template-columns: 1fr; } .rsi-grid .metric + .metric { border-left: 0; border-top: 1px solid #253043; } }
