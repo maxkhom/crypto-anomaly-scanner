@@ -13,7 +13,11 @@ type Snapshot = {
   seconds_since_last_trade_received: number | null
   received_trade_count: number
   short_momentum: {
-    history?: { status: string; valid_intervals: number; required_intervals: number; percentile: number | null }
+    history?: {
+      status: string; valid_intervals: number; required_intervals: number; percentile: number | null
+      reason?: string | null; baseline_from?: string | null; baseline_to?: string | null
+      baseline_span_seconds?: number | null; skipped_intervals?: number
+    }
     price_acceleration?: Acceleration
     anomaly_score?: { components: { price_acceleration: { status: string; points: number | null; max_points: number } } }
     status: string; windows: Window[]; change_pp: number | null
@@ -140,7 +144,7 @@ export default function RealtimePanel() {
         </table>
         {!rows.length && <p className="empty">{emptyMessage}</p>}
       </div>
-      <p className="metric-note">Сила движения — абсолютное изменение последнего интервала. Необычность цены — доля движений предыдущих 30 минут, которые последнее превысило по модулю. Это не вероятность успеха сделки и ещё не Anomaly Score. Границы интервалов общие для всех монет: :00, :10, :20… Время определяется получением данных сервером.</p>
+      <p className="metric-note">Сила движения — абсолютное изменение последнего интервала. Необычность цены — доля из 180 последних валидных 10-секундных движений, которые последнее превысило по модулю. Поиск — в пределах 45 минут перед оцениваемым интервалом; пропуски исключаются без заполнения. Это не вероятность успеха сделки и ещё не Anomaly Score. Границы интервалов общие для всех монет: :00, :10, :20… Время определяется получением данных сервером.</p>
       <p className="metric-note">Ускорение · /25 — отдельный компонент будущего Score: необычность разницы доходностей двух соседних интервалов. Сравнение с 180 предыдущими разницами по модулю. Высокое значение возможно при ускорении, замедлении или развороте, даже если движение мало по величине.</p>
     </section>
     <p className="metric-note">{error ? 'Не удалось обновить список потоков. Повторяем запрос…'
@@ -199,8 +203,9 @@ function UnusualCell({ item }: { item: Snapshot }) {
   const history = item.short_momentum.history
   if (item.status !== 'live') return <>—<small>Нет свежих сделок</small></>
   if (!history) return <>—<small>Нет истории</small></>
+  if (history.reason === 'missing_current_return') return <>—<small>Нет текущего интервала</small></>
   if (history.status === 'warming_up') return <>История {history.valid_intervals}/{history.required_intervals}</>
-  return <>—<small>Пропуски · история {history.valid_intervals}/{history.required_intervals}</small></>
+  return <>—<small>История {history.valid_intervals}/{history.required_intervals} за ≤45 мин</small></>
 }
 
 function lastMove(item: Snapshot) {
@@ -246,10 +251,12 @@ function RealtimeDetails({ symbol, data, error }: { symbol: string; data: Snapsh
       История для сравнения: {momentum.history.valid_intervals} / {momentum.history.required_intervals} корректных интервалов.
       {' '}{!live ? 'Оценка недоступна: нет свежих сделок.'
         : momentum.history.status === 'ok' && momentum.history.percentile !== null
-          ? `Последнее движение сильнее ${momentum.history.percentile.toLocaleString('ru-RU')}% движений предыдущих 30 минут.`
-          : momentum.history.status === 'warming_up' ? 'Накопление истории — требуется чуть больше 30 минут непрерывной работы.'
-            : 'Недостаточно данных: есть пропуски в истории или последнем интервале.'}
-      {' '}Равные по величине движения не считаются превышенными. История сохраняется локально. Паузы в работе остаются пропусками.
+          ? `Последнее движение сильнее ${momentum.history.percentile.toLocaleString('ru-RU')}% из 180 последних валидных движений.`
+          : momentum.history.reason === 'missing_current_return' ? 'Нет текущего 10-секундного return: предыдущим он не заменяется.'
+            : 'Нужно 180 валидных returns в пределах 45 минут перед оцениваемым интервалом. Счётчик показывает выбранные значения, а не непрерывную серию.'}
+      {momentum.history.baseline_from && momentum.history.baseline_to && <> Фактическая история: {new Date(momentum.history.baseline_from).toLocaleTimeString('ru-RU')}–{new Date(momentum.history.baseline_to).toLocaleTimeString('ru-RU')}.</>}
+      {typeof momentum.history.skipped_intervals === 'number' && <> Пропущено при поиске: {momentum.history.skipped_intervals} интервалов.</>}
+      {' '}Равные по величине движения не считаются превышенными. История сохраняется на сервере. Паузы остаются пропусками. Для ускорения по-прежнему нужны соседние интервалы без пропусков в его исходном окне.
     </p>}
     <p className="metric-note">{live && momentum?.status === 'warming_up'
       ? 'Накапливаем историю: требуется около 40 секунд непрерывного потока.'

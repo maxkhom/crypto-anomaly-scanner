@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 from decimal import Decimal
+from short_momentum import BOUNDARY_RETENTION_SECONDS
 
 
 class HistoryStore:
@@ -32,7 +33,8 @@ class HistoryStore:
                     conn.executemany('''INSERT INTO receipt_boundaries_v1 VALUES (?, ?, ?, ?)
                         ON CONFLICT(symbol, boundary) DO UPDATE SET price=excluded.price, started=excluded.started''',
                         [(symbol, int(stamp), price, started) for stamp, price in rows])
-                conn.execute('DELETE FROM receipt_boundaries_v1 WHERE boundary < ? OR boundary > ?', (now - 1830, now))
+                conn.execute('DELETE FROM receipt_boundaries_v1 WHERE boundary < ? OR boundary > ?',
+                             (math.floor(now / 10) * 10 - BOUNDARY_RETENTION_SECONDS, now))
         finally:
             conn.close()
 
@@ -41,7 +43,7 @@ class HistoryStore:
         try:
             rows = conn.execute('''SELECT symbol, boundary, price, started
                 FROM receipt_boundaries_v1 WHERE boundary >= ? AND boundary <= ?
-                ORDER BY boundary''', (math.floor(now / 10) * 10 - 1820, now)).fetchall()
+                ORDER BY boundary''', (math.floor(now / 10) * 10 - BOUNDARY_RETENTION_SECONDS, now)).fetchall()
             result = {}
             for symbol, stamp, price, started in rows:
                 value = None if price is None else Decimal(price)

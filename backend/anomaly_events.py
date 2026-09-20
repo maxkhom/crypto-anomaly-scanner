@@ -2,7 +2,7 @@
 from decimal import Decimal
 from datetime import datetime, timezone
 
-RULE_VERSION = 'price_10s_v1'
+RULE_VERSION = 'price_10s_v2'
 MIN_PERCENTILE = 95
 MIN_MOVE = Decimal('0.1')
 
@@ -27,6 +27,11 @@ def detect_event(symbol, momentum, now, live, reference_price=None):
             'reference_price': reference_price, 'change_pct': float(change),
             'percentile': history['percentile'], 'baseline_intervals': 180,
             'baseline_from': history['baseline_from'], 'baseline_to': history['baseline_to'],
+            'baseline_selection_method': history['selection_method'],
+            'baseline_max_lookback_seconds': history['max_lookback_seconds'],
+            'baseline_span_seconds': history['baseline_span_seconds'],
+            'baseline_skipped_intervals': history['skipped_intervals'],
+            'baseline_search_from': history['search_from'], 'baseline_search_to': history['search_to'],
             'direction': 'up' if change > 0 else 'down',
             'event_type': 'ANOMALOUS_RISE' if change > 0 else 'ANOMALOUS_FALL',
             'time_basis': result['time_basis'],

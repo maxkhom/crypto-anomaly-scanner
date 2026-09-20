@@ -9,6 +9,22 @@ from history_store import HistoryStore
 
 
 class EventTests(unittest.TestCase):
+    def test_gap_tolerant_baseline_is_versioned_in_events(self):
+        data = ShortMomentum()
+        data.started = -1
+        data.next_boundary = 3010
+        data.boundaries.extend((stamp, None if stamp == 1500 else Decimal('110' if stamp == 3000 else '100'))
+                               for stamp in range(290, 3001, 10))
+        event = detect_event('BTCUSDT', data, 3005, True)
+        self.assertEqual(event['rule_version'], 'price_10s_v2')
+        self.assertEqual(event['baseline_intervals'], 180)
+        self.assertEqual(event['baseline_selection_method'], 'latest_valid_returns')
+        self.assertEqual(event['baseline_max_lookback_seconds'], 2700)
+        self.assertEqual(event['baseline_skipped_intervals'], 2)
+        self.assertEqual(event['percentile'], 100)
+        data.boundaries[-1] = (3000, None)
+        self.assertIsNone(detect_event('BTCUSDT', data, 3005, True))
+
     def history(self, final):
         data = ShortMomentum()
         data.started = -1

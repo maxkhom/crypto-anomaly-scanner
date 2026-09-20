@@ -1,6 +1,7 @@
 import unittest
+from decimal import Decimal
 
-from short_momentum import ShortMomentum
+from short_momentum import ShortMomentum, MAX_BOUNDARIES, iso
 
 
 class ShortMomentumTests(unittest.TestCase):
@@ -52,7 +53,7 @@ class ShortMomentumTests(unittest.TestCase):
         data.add(100000, "110")
         result = data.calculate(100000, True)
         self.assertEqual(data.started, 0)
-        self.assertEqual(len(data.boundaries), 183)
+        self.assertEqual(len(data.boundaries), MAX_BOUNDARIES)
         self.assertEqual(result["history"]["status"], "missing_data")
         self.assertEqual(result["history"]["valid_intervals"], 0)
         self.assertIsNone(result["history"]["percentile"])
@@ -99,7 +100,7 @@ class HistoryTests(unittest.TestCase):
         after = data.calculate(1811, True)
         self.assertEqual(before["history"], after["history"])
         self.assertEqual(before["windows"][-1]["percent"], after["windows"][-1]["percent"])
-        self.assertLessEqual(len(data.boundaries), 183)
+        self.assertLessEqual(len(data.boundaries), MAX_BOUNDARIES)
 
     def test_common_boundaries_despite_different_start_times(self):
         first, second = ShortMomentum(), ShortMomentum()
@@ -109,3 +110,105 @@ class HistoryTests(unittest.TestCase):
                 second.add(tick + 0.5, "100")
         self.assertEqual(first.calculate(51, True)["windows"][-1]["to_time"],
                          second.calculate(51, True)["windows"][-1]["to_time"])
+
+
+class LatestValidHistoryTests(unittest.TestCase):
+    def build(self, gaps=(), final='110'):
+        data = ShortMomentum()
+        data.started = -1
+        data.next_boundary = 3010
+        data.boundaries.extend((stamp, None if stamp in gaps else Decimal(final if stamp == 3000 else '100'))
+                               for stamp in range(290, 3001, 10))
+        return data
+
+    def test_small_gap_uses_older_real_returns(self):
+        data = self.build(gaps=(1500,))
+        before = list(data.boundaries)
+        result = data.calculate(3005, True)
+        history = result['history']
+        self.assertEqual(history['status'], 'ok')
+        self.assertEqual(history['valid_intervals'], 180)
+        self.assertEqual(history['skipped_intervals'], 2)
+        self.assertEqual(history['baseline_from'], iso(1170))
+        self.assertEqual(history['baseline_to'], iso(2990))
+        self.assertEqual(history['baseline_span_seconds'], 1820)
+        self.assertEqual(history['percentile'], 100)
+        self.assertEqual(list(data.boundaries), before)
+        self.assertEqual(result['price_acceleration']['status'], 'insufficient_data')
+        self.assertIsNone(result['anomaly_score']['components']['price_acceleration']['points'])
+        self.assertIsNone(result['anomaly_score']['score'])
+
+    def test_current_missing_never_falls_back(self):
+        for stamp in (2990, 3000):
+            result = self.build(gaps=(stamp,)).calculate(3005, True)['history']
+            self.assertEqual(result['valid_intervals'], 180)
+            self.assertIsNone(result['percentile'])
+            self.assertEqual(result['reason'], 'missing_current_return')
+            self.assertEqual(result['evaluated_to'], iso(3000))
+
+    def test_latest_180_selected_and_ties_unchanged(self):
+        data = self.build(final='100')
+        # Older huge movements must not enter the newest 180-return baseline.
+        data.boundaries[1] = (300, Decimal('1000'))
+        result = data.calculate(3005, True)['history']
+        self.assertEqual(result['baseline_from'], iso(1190))
+        self.assertEqual(result['valid_intervals'], 180)
+        self.assertEqual(result['skipped_intervals'], 0)
+        self.assertEqual(result['percentile'], 0)
+
+    def test_strict_percentile_and_absolute_direction_with_gaps(self):
+        for final in ('110', '90'):
+            data = self.build(gaps=(1500,), final=final)
+            # Two historical returns have magnitude greater than 10%.
+            data.boundaries[151] = (1800, Decimal('200'))
+            history = data.calculate(3005, True)['history']
+            self.assertEqual(history['percentile'], round(178 / 180 * 100, 2))
+
+    def test_lookback_boundary_inclusive_but_older_return_excluded(self):
+        data = self.build()
+        data.boundaries.clear()
+        # 179 eligible historical returns plus one outside the search window.
+        data.boundaries.extend((stamp, Decimal('100')) for stamp in range(280, 2081, 10))
+        data.boundaries.extend([(2990, Decimal('100')), (3000, Decimal('110'))])
+        history = data.calculate(3005, True)['history']
+        self.assertEqual(history['search_from'], iso(290))
+        self.assertEqual(history['search_to'], iso(2990))
+        self.assertEqual(history['max_lookback_seconds'], 2700)
+        self.assertEqual(history['valid_intervals'], 179)
+        self.assertEqual(history['missing_intervals'], 1)
+        self.assertIsNone(history['percentile'])
+        data.boundaries.append((2090, Decimal('100')))
+        ready = data.calculate(3005, True)['history']
+        self.assertEqual(ready['valid_intervals'], 180)
+        self.assertEqual(ready['baseline_from'], iso(290))
+        self.assertEqual(ready['baseline_age_seconds'], 2700)
+        self.assertEqual(ready['percentile'], 100)
+
+    def test_no_bridging_over_missing_boundary(self):
+        data = self.build()
+        data.boundaries.clear()
+        # Separated real points cannot form even one ten-second return.
+        data.boundaries.extend((stamp, Decimal('100')) for stamp in range(290, 2990, 20))
+        data.boundaries.extend([(2990, Decimal('100')), (3000, Decimal('110'))])
+        history = data.calculate(3005, True)['history']
+        self.assertEqual(history['valid_intervals'], 0)
+        self.assertIsNone(history['percentile'])
+
+    def test_disconnect_and_future_trade_do_not_change_closed_selection(self):
+        data = self.build(gaps=(1500,))
+        before = data.calculate(3005, True)
+        self.assertIsNone(data.calculate(3005, False)['history']['percentile'])
+        data.add(3006, '999')
+        after = data.calculate(3007, True)
+        self.assertEqual(before['history'], after['history'])
+        self.assertEqual(before['price_acceleration'], after['price_acceleration'])
+
+    def test_old_history_does_not_affect_acceleration_or_score(self):
+        data = self.build()
+        before = data.calculate(3005, True)
+        for index in range(80):
+            stamp, _ = data.boundaries[index]
+            data.boundaries[index] = (stamp, None)
+        after = data.calculate(3005, True)
+        self.assertEqual(before['price_acceleration'], after['price_acceleration'])
+        self.assertEqual(before['anomaly_score'], after['anomaly_score'])

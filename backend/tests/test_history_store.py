@@ -1,4 +1,5 @@
 import tempfile
+from contextlib import closing
 import unittest
 from pathlib import Path
 from decimal import Decimal
@@ -9,6 +10,25 @@ from realtime import TradeStream
 
 
 class StoreTests(unittest.TestCase):
+    def test_extended_history_survives_restart_and_prunes_at_exact_limit(self):
+        from short_momentum import ShortMomentum
+        with tempfile.TemporaryDirectory() as folder:
+            store = HistoryStore(Path(folder) / 'history.sqlite3')
+            rows = [(stamp, None if stamp == 1500 else '110' if stamp == 3000 else '100')
+                    for stamp in range(280, 3001, 10)]
+            store.save([('BTCUSDT', -1, rows)], 3009.9)
+            saved = store.load(3009.9)['BTCUSDT']
+            self.assertEqual(len(saved['rows']), 272)
+            self.assertEqual(saved['rows'][0][0], 290)
+            data = ShortMomentum()
+            data.started = saved['started']
+            data.boundaries.extend(saved['rows'])
+            data.next_boundary = 3010
+            self.assertEqual(data.calculate(3009.9, True)['history']['percentile'], 100)
+            self.assertEqual(data.calculate(3009.9, True)['price_acceleration']['status'], 'insufficient_data')
+            store.save([], 3010)
+            self.assertEqual(store.load(3010)['BTCUSDT']['rows'][0][0], 300)
+
     def test_acceleration_history_survives_restart_between_boundaries(self):
         from short_momentum import ShortMomentum
         with tempfile.TemporaryDirectory() as folder:
@@ -33,7 +53,7 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(saved, [(10, Decimal('100.123456789')), (20, None), (30, Decimal('110'))])
             self.assertEqual(store.load(4000), {})
             store.save([], 4000)
-            with store.connection() as conn:
+            with closing(store.connection()) as conn:
                 self.assertEqual(conn.execute('SELECT COUNT(*) FROM receipt_boundaries_v1').fetchone()[0], 0)
 
 

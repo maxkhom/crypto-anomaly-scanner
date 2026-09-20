@@ -6,6 +6,11 @@ import math
 from price_acceleration import calculate_price_acceleration
 from anomaly_score import calculate_anomaly_score
 
+PRICE_BASELINE_COUNT = 180
+PRICE_LOOKBACK_SECONDS = 45 * 60
+# Search the 45 minutes BEFORE the evaluated interval; retain its two endpoints too.
+BOUNDARY_RETENTION_SECONDS = PRICE_LOOKBACK_SECONDS + 10
+MAX_BOUNDARIES = BOUNDARY_RETENTION_SECONDS // 10 + 1
 
 def iso(seconds):
     return datetime.fromtimestamp(seconds, timezone.utc).isoformat()
@@ -16,8 +21,7 @@ class ShortMomentum:
         self.started = None
         self.last_sample = None
         self.next_boundary = None
-        # 183 prices define 182 returns and 181 adjacent return differences.
-        self.boundaries = deque(maxlen=183)
+        self.boundaries = deque(maxlen=MAX_BOUNDARIES)
 
     def advance(self, now):
         if self.next_boundary is None:
@@ -26,9 +30,9 @@ class ShortMomentum:
             self.__init__()
             return
         # Large gaps must not create unbounded work.
-        if now - self.next_boundary > 1830:
+        if now - self.next_boundary > BOUNDARY_RETENTION_SECONDS + 10:
             self.boundaries.clear()
-            self.next_boundary = math.floor(now / 10) * 10 - 1820
+            self.next_boundary = math.floor(now / 10) * 10 - BOUNDARY_RETENTION_SECONDS
         while self.next_boundary <= now:
             price = None
             if self.last_sample and 0 < self.next_boundary - self.last_sample[0] <= 2:
@@ -54,13 +58,34 @@ class ShortMomentum:
             opening, closing = prices.get(right - 10), prices.get(right)
             return None if opening is None or closing is None else (closing / opening - 1) * 100
 
-        baseline = [change(end - offset * 10) for offset in range(180, 0, -1)]
-        valid = [value for value in baseline if value is not None]
+        selected = []
+        skipped = 0
+        # Newest first; missing adjacent prices never become a longer return.
+        for offset in range(1, PRICE_LOOKBACK_SECONDS // 10 + 1):
+            right = end - offset * 10
+            value = change(right)
+            if value is None:
+                skipped += 1
+                continue
+            selected.append((right, value))
+            if len(selected) == PRICE_BASELINE_COUNT:
+                break
+        valid = [value for _, value in selected]
         current = change(end)
-        history = {"required_intervals": 180, "valid_intervals": len(valid),
-                   "missing_intervals": 180 - len(valid), "baseline_from": iso(end - 1810),
-                   "baseline_to": iso(end - 10), "evaluated_from": iso(end - 10),
-                   "evaluated_to": iso(end), "status": "unavailable", "percentile": None}
+        oldest = selected[-1][0] - 10 if selected else None
+        newest = selected[0][0] if selected else None
+        history = {"version": "price_latest_valid_45m_v2", "selection_method": "latest_valid_returns",
+                   "required_intervals": PRICE_BASELINE_COUNT, "valid_intervals": len(valid),
+                   "missing_intervals": PRICE_BASELINE_COUNT - len(valid),
+                   "skipped_intervals": skipped, "max_lookback_seconds": PRICE_LOOKBACK_SECONDS,
+                   "search_from": iso(end - BOUNDARY_RETENTION_SECONDS), "search_to": iso(end - 10),
+                   "baseline_from": iso(oldest) if oldest is not None else None,
+                   "baseline_to": iso(newest) if newest is not None else None,
+                   "baseline_span_seconds": newest - oldest if selected else None,
+                   "baseline_age_seconds": end - 10 - oldest if selected else None,
+                   "evaluated_from": iso(end - 10), "evaluated_to": iso(end),
+                   "current_return_status": "ok" if current is not None else "missing_data",
+                   "status": "unavailable", "reason": "feed_unavailable", "percentile": None}
         acceleration = calculate_price_acceleration(
             [change(end - offset * 10) for offset in range(181, -1, -1)],
             live and self.started is not None,
@@ -76,10 +101,12 @@ class ShortMomentum:
         if not live or self.started is None:
             return result
         history["status"] = "warming_up" if self.started > end - 1810 else "missing_data"
-        if len(valid) == 180 and current is not None:
+        history["reason"] = "missing_current_return" if current is None else "insufficient_valid_returns"
+        if len(valid) == PRICE_BASELINE_COUNT and current is not None:
             history["status"] = "ok"
+            history["reason"] = None
             # Strict comparison: equal moves do not count as exceeded.
-            history["percentile"] = round(100 * sum(abs(value) < abs(current) for value in valid) / 180, 2)
+            history["percentile"] = round(100 * sum(abs(value) < abs(current) for value in valid) / PRICE_BASELINE_COUNT, 2)
         if len(self.boundaries) < 4:
             result["status"] = "warming_up"
             return result
